@@ -1,0 +1,23 @@
+[package]
+name = "zergling"
+version = "0.1.0"
+authors = ["Jiahao Huang <july2993@gmail.com>"]
+
+[dependencies]
+protobuf = "1.4"
+futures         = "0.1"
+futures-cpupool = "0.1"
+grpc            = "0.*"
+iron = "0.5"
+router = "0.5"
+log = "0.3"
+clap = "2"
+grpcio = "0.1"
+quick-error = "0.2"
+urlencoded = "0.5"
+serde_json = "1.0"
+serde_derive = "1.0"
+serde= "1.0"
+
+
+
