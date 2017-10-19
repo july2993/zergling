@@ -8,6 +8,7 @@ use super::TTL;
 use super::VolumeId;
 
 
+#[derive(Debug)]
 pub struct SuperBlock {
     pub Version: Version,
     pub ReplicaPlacement: ReplicaPlacement,
@@ -16,6 +17,7 @@ pub struct SuperBlock {
 }
 
 
+#[derive(Debug)]
 pub struct Volume {
     pub id: VolumeId,
     pub Dir: String,

@@ -27,11 +27,29 @@ pub struct DataNode {
     pub public_url: String,
     pub last_seen: i64,
     pub rack: Arc<Option<Rack>>,
+    pub volumes: HashMap<VolumeId, VolumeInfo>,
+    pub max_volumes: i64,
 }
 
 impl DataNode {
     pub fn url(&self) -> String {
         format!("{}:{}", self.ip, self.port)
+    }
+
+    pub fn add_or_update_volume(&mut self, v: VolumeInfo) {
+        self.volumes.insert(v.id, v);
+    }
+
+    pub fn has_volumes(&self) -> i64 {
+        self.volumes.len() as i64
+    }
+
+    pub fn max_volumes(&self) -> i64 {
+        self.max_volumes
+    }
+
+    pub fn free_volumes(&self) -> i64 {
+        self.max_volumes() - self.has_volumes()
     }
 
     pub fn get_rack_id(&self) -> String {
@@ -75,6 +93,30 @@ impl Rack {
             &None => String::from(""),
         }
     }
+
+    pub fn has_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, nd) in &self.nodes {
+            ret += nd.has_volumes();
+        }
+        ret
+    }
+
+    pub fn max_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, nd) in &self.nodes {
+            ret += nd.max_volumes();
+        }
+        ret
+    }
+
+    pub fn free_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, nd) in &self.nodes {
+            ret += nd.free_volumes();
+        }
+        ret
+    }
 }
 
 
@@ -90,6 +132,30 @@ impl DataCenter {
             id: String::from(id),
             racks: HashMap::new(),
         }
+    }
+
+    pub fn has_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, rack) in &self.racks {
+            ret += rack.has_volumes();
+        }
+        ret
+    }
+
+    pub fn max_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, rack) in &self.racks {
+            ret += rack.max_volumes();
+        }
+        ret
+    }
+
+    pub fn free_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, rack) in &self.racks {
+            ret += rack.free_volumes();
+        }
+        ret
     }
 }
 

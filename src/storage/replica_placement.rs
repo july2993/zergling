@@ -33,4 +33,8 @@ impl ReplicaPlacement {
 
         s
     }
+
+    pub fn get_copy_count(&self) -> i64 {
+        (self.DiffDataCenterCount + self.DiffRackCount + self.SameRackCount + 1) as i64
+    }
 }

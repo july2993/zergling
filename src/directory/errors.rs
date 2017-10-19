@@ -17,6 +17,26 @@ quick_error! {
         NoFreeSpace {
             display("No free volume left")
         }
+        NoWritableVolume(msg: String) {
+            display("No more writable volume: {}", msg)
+        }
+        Other(err: Box<error::Error + Sync + Send>) {
+            from()
+            cause(err.as_ref())
+            description(err.description())
+            display("{:?}", err)
+        }
+        String(s: String){
+            from()
+            description(s)
+            display("{:?}", s)
+        }
+        SerdeJson(err: serde_json::Error) {
+            from()
+            cause(err)
+            description(err.description())
+            display("{:?}", err)
+        }
     }
 }
 pub type Result<T> = result::Result<T, Error>;

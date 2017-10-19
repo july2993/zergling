@@ -70,7 +70,7 @@ pub fn assign_handler(req: &mut Request, ctx: &Context) -> IronResult<Response> 
 
     let mut topo = ctx.topo.lock().unwrap();
     if !topo.has_writable_volume(&option) {
-        if topo.free_space() <= 0 {
+        if topo.free_volumes() <= 0 {
             return Err(IronError::from(Error::NoFreeSpace));
         }
 

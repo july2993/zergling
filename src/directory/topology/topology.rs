@@ -26,7 +26,6 @@ pub struct Topology {
 
 
     pub data_centers: HashMap<String, DataCenter>,
-
 }
 
 
@@ -87,9 +86,12 @@ impl Topology {
     }
 
     // free volume
-    pub fn free_space(&self) -> i64 {
-        panic!("todo");
-        0
+    pub fn free_volumes(&self) -> i64 {
+        let mut ret = 0;
+        for (id, dc) in &self.data_centers {
+            ret += dc.max_volumes() - dc.has_volumes();
+        }
+        ret
     }
 
     pub fn pick_for_write(&self, count: i64, option: &VolumeGrowOption) -> Result<(String, i64, DataNode)> {
@@ -97,5 +99,4 @@ impl Topology {
 
         Ok((String::from("ok"), 0, DataNode::default()))
     }
-
 }
