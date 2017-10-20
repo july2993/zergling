@@ -3,6 +3,7 @@ extern crate iron;
 extern crate router;
 
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 use iron::prelude::*;
 use iron::status;
@@ -78,8 +79,8 @@ impl Server {
 
         Iron::new(router).http("localhost:".to_string() + &self.port.to_string()).unwrap();
     }
-
 }
+
 
 
 
