@@ -5,10 +5,16 @@ extern crate zergling;
 // extern crate env_logger;
 #[macro_use]
 extern crate log;
+extern crate env_logger;
+
 extern crate clap;
+extern crate chrono;
+
 
 // use log::Level;
 use clap::{App, Arg, ArgMatches, SubCommand};
+use env_logger::LogBuilder;
+use chrono::Local;
 
 
 use zergling::directory::server::Server;
@@ -16,7 +22,18 @@ use zergling::directory::sequencer::MemorySequencer;
 
 
 fn main() {
-    debug!("this is a debug {}", "message");
+	LogBuilder::new()
+        .format(|record| {
+                    format!("{} [{}] - {}",
+                            Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                            record.level(),
+                            record.args())
+                })
+        .init();
+
+    debug!("this is printed by default");
+    info!("this is printed by default");
+    warn!("this is printed by default");
     error!("this is printed by default");
 
     let matches = App::new("zergling")

@@ -4,6 +4,7 @@ use std::convert::From;
 use iron::IronError;
 use iron::status;
 use serde_json;
+use url;
 
 
 
@@ -32,6 +33,12 @@ quick_error! {
             display("{:?}", s)
         }
         SerdeJson(err: serde_json::Error) {
+            from()
+            cause(err)
+            description(err.description())
+            display("{:?}", err)
+        }
+        UrlParseError(err: url::ParseError) {
             from()
             cause(err)
             description(err.description())

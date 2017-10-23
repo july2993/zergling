@@ -1,21 +1,24 @@
 
-extern crate iron;
 extern crate router;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
-use iron::prelude::*;
-use iron::status;
-use iron::response::Response;
 use router::Router;
 use super::topology::Topology;
 use super::sequencer::{Sequencer, MemorySequencer};
 use super::sequencer;
 use grpcio::{ClientStreamingSink, RequestStream, RpcContext, RpcStatus, RpcStatusCode,UnarySink,DuplexSink};
+
+use futures::future::Future;
+use hyper::header::ContentLength;
+use hyper::server::{Http, Request, Response, Service};
+
+
+
 use super::api::*;
 
-use pb::zergling_grpc::Zergling as Service;
+use pb::zergling_grpc::Zergling as ZService;
 use pb::zergling::*;
 use directory::topology::VolumeGrow;
 
@@ -66,18 +69,13 @@ impl Server {
             topo: self.topo.clone(),
             vg: self.vg.clone(),
         };
-        {
-            let c = ctx.clone();
-            router.get("/:test_handler", move |request: &mut Request| test_handler(request, &c), "test");
-        }
 
-        {
-            let c = ctx.clone();
-            router.get("/dir/assign", move |request: &mut Request| assign_handler(request, &c), "assign");
-        }
+        let mut addr_str = "127.0.0.1:".to_string();
+        addr_str.push_str(&self.port.to_string());
+        let addr = addr_str.parse().unwrap();
+        let server = Http::new().bind(&addr, move || Ok(ctx.clone())).unwrap();
+        server.run().unwrap();
 
-
-        Iron::new(router).http("localhost:".to_string() + &self.port.to_string()).unwrap();
     }
 }
 
@@ -88,7 +86,7 @@ impl Server {
 // start grpc
 // 
 
-impl Service for Server {
+impl ZService for Server {
     fn send_heartbeat(&self, ctx: RpcContext,
                       stream: RequestStream<Heartbeat>, 
                       sink: DuplexSink<HeartbeatResponse>) {

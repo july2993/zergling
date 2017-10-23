@@ -9,6 +9,7 @@ extern crate iron;
 extern crate quick_error;
 extern crate router;
 extern crate log;
+extern crate env_logger;
 extern crate urlencoded;
 extern crate serde_json;
 #[macro_use]
