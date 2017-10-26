@@ -2,32 +2,32 @@
 use super::TTL;
 use std;
 
-pub const NeedleHeaderSize: u32 = 16;
-pub const NeedlePaddingSize: u32 = 8;
-pub const NeedleChecksumSize: u32 = 4;
-pub const MaxPossibleVolumeSize: u32 = 4 * 1024 * 1024 * 1024 * 8;
-pub const TombstoneFileSize: u32 = std::u32::MAX;
-pub const PairNamePrefix: &'static str = "Zergling-";
+pub const NEEDLE_HEADER_SIZE: u32 = 16;
+pub const NEEDLE_PADDING_SIZE: u32 = 8;
+pub const NEEDLE_CHECKSUM_SIZE: u32 = 4;
+pub const MAX_POSSIBLE_VOLUME_SIZE: u64 = 4 * 1024 * 1024 * 1024 * 8;
+pub const TOMBSTONE_FILE_SIZE: u32 = std::u32::MAX;
+pub const PAIR_NAME_PREFIX: &'static str = "Zergling-";
 
 
 pub struct Needle {
-    Cookie: u32,
-    Id: u64,
-    Size: u32,
+    pub cookie: u32,
+    pub id: u64,
+    pub size: u32,
 
-    DataSize: u32,
-    Data: Vec<u8>,
-    Flags: u8,
-    NameSize: u8,
-    Name: Vec<u8>,
-    MimeSize: u8,
-    Mime: Vec<u8>,
-    PairsSize: u16,
-    Pairs: Vec<u8>,
-    LastModified: Vec<u8>,
+    pub data_size: u32,
+    pub data: Vec<u8>,
+    pub flags: u8,
+    pub name_size: u8,
+    pub name: Vec<u8>,
+    pub mime_size: u8,
+    pub mime: Vec<u8>,
+    pub pairs_size: u16,
+    pub pairs: Vec<u8>,
+    pub last_modified: Vec<u8>,
 
-    TTL: TTL,
+    pub ttl: TTL,
 
-    Checksum: u32,
-    Padding: Vec<u8>,
+    pub checksum: u32,
+    pub padding: Vec<u8>,
 }

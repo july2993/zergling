@@ -1,5 +1,5 @@
 
-use super::{Error, Result};
+use super::{Result};
 use storage::errors::Error::ParseTTL;
 use std::ops::Add;
 // use std::marker::Clone;
@@ -35,13 +35,13 @@ impl Unit {
     }
 
     fn string(&self) -> String {
-        match self {
-            Minute => String::from("m"),
-            Hour => String::from("h"),
-            Day => String::from("d"),
-            Week => String::from("w"),
-            Month => String::from("M"),
-            Year => String::from("y"),
+        match *self {
+            Unit::Minute => String::from("m"),
+            Unit::Hour => String::from("h"),
+            Unit::Day => String::from("d"),
+            Unit::Week => String::from("w"),
+            Unit::Month => String::from("M"),
+            Unit::Year => String::from("y"),
             _ => String::from(""),
         }
     }
@@ -49,15 +49,15 @@ impl Unit {
 
 #[derive(Debug, Copy, Default)]
 pub struct TTL {
-    pub Count: u8,
-    pub Unit: Unit,
+    pub count: u8,
+    pub unit: Unit,
 }
 
 impl Clone for TTL {
     fn clone(&self) -> TTL {
         TTL {
-            Count: self.Count,
-            Unit: self.Unit,
+            count: self.count,
+            unit: self.unit,
         }
     }
 }
@@ -72,7 +72,7 @@ impl Clone for TTL {
 // 8y
 
 impl TTL {
-    fn new(s: String) -> Result<TTL> {
+    pub fn new(s: &str) -> Result<TTL> {
         if s.is_empty() {
             return Err(ParseTTL(String::from(s)));
         }
@@ -80,35 +80,35 @@ impl TTL {
         let bytes = s.as_bytes();
 
         let mut unit = bytes[bytes.len() - 1];
-        let mut countBytes = &bytes[..bytes.len() - 1];
+        let mut count_bytes = &bytes[..bytes.len() - 1];
 
         if unit >= '0'  as u8 && unit <= '9' as u8 {
             unit = 'm' as u8;
-            countBytes = bytes;
+            count_bytes = bytes;
         }
 
-        if let Ok(count) = String::from_utf8(countBytes.to_vec()).unwrap().parse::<u8>() {
+        if let Ok(count) = String::from_utf8(count_bytes.to_vec()).unwrap().parse::<u8>() {
             if let Some(unit) = Unit::new(unit) {
                 let ttl = TTL {
-                    Count: count,
-                    Unit: unit,
+                    count: count,
+                    unit: unit,
                 };
                 return Ok(ttl);
             }
 
         }
 
-        return Err(ParseTTL(s.clone()));
+        return Err(ParseTTL(String::from(s)));
     }
 
     pub fn string(&self) -> String {
-        if self.Count == 0 {
+        if self.count == 0 {
             return String::from("");
         }
 
-        let mut s = self.Count.to_string();
+        let mut s = self.count.to_string();
 
-        s = s.add(&self.Unit.string());
+        s = s.add(&self.unit.string());
 
         s
     }

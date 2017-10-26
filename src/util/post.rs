@@ -2,10 +2,9 @@
 
 use url::Url;
 use std::error::Error;
-use std;
 
 
-use std::io::{self, Write};
+use std::io::{Write};
 use futures::{Future, Stream};
 use hyper::Client;
 use hyper;

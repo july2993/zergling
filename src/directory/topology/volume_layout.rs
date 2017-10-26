@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use rand;
+use std::sync::Arc;
+use std::cell::RefCell;
 
 use storage::{VolumeId, ReplicaPlacement, TTL};
 use directory::topology::{DataNode, VolumeGrowOption, VolumeInfo};
@@ -14,40 +16,41 @@ use directory::errors::{Result,Error};
 pub struct VolumeLayout {
     pub rp: ReplicaPlacement,
     pub ttl: Option<TTL>,
-    pub volumeSizeLimit: u64,
+    pub volume_size_limit: u64,
 
-    pub writableVolumes: Vec<VolumeId>,
-    pub readonlyVolumes: HashSet<VolumeId>,
-    pub oversizeVolumes: HashSet<VolumeId>,
+    pub writable_volumes: Vec<VolumeId>,
+    pub readonly_volumes: HashSet<VolumeId>,
+    pub oversize_volumes: HashSet<VolumeId>,
 
-    pub vid2location: HashMap<VolumeId, Vec<DataNode>>
+    pub vid2location: HashMap<VolumeId, Vec<Arc<RefCell<DataNode>>>>
 }
 
 impl VolumeLayout {
-    pub fn new(rp: ReplicaPlacement, ttl: Option<TTL>, volumeSizeLimit: u64) -> VolumeLayout {
+    pub fn new(rp: ReplicaPlacement, ttl: Option<TTL>, volume_size_limit: u64) -> VolumeLayout {
         VolumeLayout {
             rp: rp,
             ttl: ttl,
-            volumeSizeLimit: volumeSizeLimit,
-            writableVolumes: Vec::new(),
-            readonlyVolumes: HashSet::new(),
-            oversizeVolumes: HashSet::new(),
+            volume_size_limit: volume_size_limit,
+            writable_volumes: Vec::new(),
+            readonly_volumes: HashSet::new(),
+            oversize_volumes: HashSet::new(),
             vid2location: HashMap::new(),
         }
     }
 
     // get match data_center, rack, node volume count
     pub fn get_active_volume_count(&self, option: &VolumeGrowOption) -> i64 {
-        if option.DataCenter == "" {
-            return self.writableVolumes.len() as i64;
+        if option.data_center == "" {
+            return self.writable_volumes.len() as i64;
         }
         let mut count = 0;
 
-        for vid in &self.writableVolumes {
+        for vid in &self.writable_volumes {
             for node in self.vid2location.get(vid).unwrap_or(&vec![]) {
-                if node.id == option.DataNode 
-                && node.get_rack_id() == option.Rack 
-                && node.get_data_center_id() == option.DataCenter {
+                let bnode = node.borrow();
+                if bnode.id == option.data_node 
+                && bnode.get_rack_id() == option.rack 
+                && bnode.get_data_center_id() == option.data_center {
                     count += 1;
                 }
             }
@@ -56,22 +59,23 @@ impl VolumeLayout {
         count
     }
 
-    pub fn pick_for_write(&self, count: u64, option: &VolumeGrowOption) -> Result<(VolumeId, Vec<&DataNode>)> {
-        if self.writableVolumes.len() < 0 {
+    pub fn pick_for_write(&self, count: u64, option: &VolumeGrowOption) -> Result<(VolumeId, Vec<Arc<RefCell<DataNode>>>)> {
+        if self.writable_volumes.len() <= 0 {
             return Err(Error::NoWritableVolume(String::from("no writable volumes")));
         }
 
         let mut counter = 0;
         let mut ret = (0, vec![]);
 
-        for vid in &self.writableVolumes {
+        for vid in &self.writable_volumes {
             match self.vid2location.get(&vid) {
                 None => (),
                 Some(location) => {
-                    for dn in location {
-                        if option.DataCenter != "" && option.DataCenter != dn.get_data_center_id()
-                            || option.Rack != "" && option.Rack != dn.get_rack_id()
-                            || option.DataNode != "" && option.DataNode != dn.id {
+                    for node in location {
+                        let dn = node.borrow();
+                        if option.data_center != "" && option.data_center != dn.get_data_center_id()
+                            || option.rack != "" && option.rack != dn.get_rack_id()
+                            || option.data_node != "" && option.data_node != dn.id {
                                 continue
                             }
                         
@@ -79,7 +83,7 @@ impl VolumeLayout {
                         if rand::random::<i64>() % counter < 1 {
                             let mut lo = vec![];
                             for n in location {
-                                lo.push(n);
+                                lo.push(n.clone());
                             }
                             ret = (*vid, lo);
                         }
@@ -95,8 +99,37 @@ impl VolumeLayout {
         return Err(Error::NoWritableVolume(String::from("no match node")));
     }
 
-    pub fn register_volume(&mut self, v: VolumeInfo, dn: DataNode) {
+    fn set_node(list: &mut Vec<Arc<RefCell<DataNode>>>, nd: Arc<RefCell<DataNode>>) {
+        for e in list.iter_mut() {
+            {
+                let e_ref = e.borrow();
+                let nd_ref = nd.borrow();
+             
+                if e_ref.ip != nd_ref.ip || e_ref.port != nd_ref.port {
+                    continue
+                }
+            }
+            *e = nd.clone();
+            break;
+        } 
 
+        list.push(nd.clone())
+    }
+
+    pub fn register_volume(&mut self, v: &VolumeInfo, dn: Arc<RefCell<DataNode>>) {
+       let list = self.vid2location.entry(v.id) 
+           .or_insert(vec![]);
+       VolumeLayout::set_node(list, dn.clone());
+
+       
+        
+    }
+
+    pub fn lookup(&self, vid: VolumeId) -> Option<Vec<Arc<RefCell<DataNode>>>> {
+        match self.vid2location.get(&vid) {
+            Some(list) => Some(list.clone()),
+            None => None,
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use storage::{VolumeId, ReplicaPlacement, Version, TTL};
 
 
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct VolumeInfo {
     pub id: VolumeId,
     pub size: u64,

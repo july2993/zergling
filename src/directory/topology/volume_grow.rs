@@ -1,8 +1,11 @@
-use directory::topology::{Topology, DataNode, VolumeInfo};
+use directory::topology::{Topology, DataNode, VolumeInfo, DataCenter, Rack};
 use directory::{Result,Error};
 use storage;
 use storage::VolumeId;
-use std::rc::Rc;
+use std::cell::RefCell;
+use std::sync::Arc;
+use rand::{thread_rng, Rng, random};
+
 
 use util;
 
@@ -21,11 +24,11 @@ impl VolumeGrow {
     }
 
     pub fn grow_by_type(&self, option: &VolumeGrowOption, topo: &Topology) -> Result<i64> {
-        let count = self.logicalCount(option.replica_placement.get_copy_count());
+        let count = self.logical_count(option.replica_placement.get_copy_count());
         self.grow_by_count_and_type(count, option, topo)
     }
 
-    fn logicalCount(&self, pcount: i64) -> i64 {
+    fn logical_count(&self, pcount: i64) -> i64 {
         match pcount {
             1 => 7,
             2 => 6,
@@ -34,20 +37,212 @@ impl VolumeGrow {
         }
     }
 
-    fn find_empty_slots(&self, option: VolumeGrowOption, topo: Topology) -> Result<i64> {
-        panic!("todo");
-        Ok(1)
+    // TODO: to long func...
+    // will specify data_node but no data center find a wrong data center to be the
+    // main data center first, then no valid data_node ???
+    fn find_empty_slots(&self, option: VolumeGrowOption, topo: &Topology) -> Result<Vec<Arc<RefCell<DataNode>>>> {
+        let mut main_dc: Option<Arc<RefCell<DataCenter>>> = None;
+        let mut main_rack: Option<Arc<RefCell<Rack>>> = None;
+        let mut main_nd: Option<Arc<RefCell<DataNode>>> = None;
+        let mut other_centers: Vec<Arc<RefCell<DataCenter>>> = vec![];
+        let mut other_racks:  Vec<Arc<RefCell<Rack>>> = vec![];
+        let mut other_nodes: Vec<Arc<RefCell<DataNode>>> = vec![];
+
+        let rp = option.replica_placement;
+        let mut valid_main_counts = 0;
+        // find main data center
+        for (dc_id, dc_arc) in topo.data_centers.iter() {
+            let dc = dc_arc.borrow();
+            if option.data_center != "" && dc.id != option.data_center {
+                continue;
+            }
+
+            if dc.racks.len() < rp.diff_rack_count as usize + 1 {
+                continue;
+            }
+
+            if dc.free_volumes() < rp.diff_rack_count as i64 + rp.same_rack_count as i64 + 1 {
+                continue;
+            }
+
+            let mut possible_racks_count = 0;
+            for (rack_id, rack_arc) in dc.racks.iter() {
+                let rack = rack_arc.borrow();
+                let mut possible_nodes_count = 0;
+                for (_, nd) in rack.nodes.iter() {
+                    if nd.borrow().free_volumes() >= 1 {
+                        possible_nodes_count += 1;
+                    }
+                }
+
+                if possible_nodes_count >= rp.same_rack_count + 1 {
+                    possible_racks_count += 1;
+                }
+            }
+
+            if possible_racks_count < rp.diff_rack_count + 1 {
+                continue
+            }
+
+            valid_main_counts += 1;
+            if random::<u32>() % valid_main_counts == 0 {
+                main_dc = Some(dc_arc.clone());
+            }
+        }
+
+        if main_dc.is_none() {
+            return Err(Error::NoFreeSpace)
+        }
+        let main_dc_arc = main_dc.unwrap();
+        
+
+        if rp.diff_data_center_count > 0 {
+            for (dc_id, dc_arc) in topo.data_centers.iter() {
+                let dc = dc_arc.borrow();
+                if *dc_id == main_dc_arc.borrow().id || dc.free_volumes() < 1 {
+                        continue;
+                }
+                other_centers.push(dc_arc.clone());
+            }
+        }
+        if other_centers.len() < rp.diff_data_center_count as usize {
+            return Err(Error::NoFreeSpace);
+        }
+
+        thread_rng().shuffle(other_centers.as_mut_slice());
+        let tmp_centers = other_centers.drain(0..rp.diff_data_center_count as usize).collect();
+        other_centers = tmp_centers;
+
+
+        // find main rack
+        let mut valid_rack_count = 0;
+        for (rack_id, rack_arc) in main_dc_arc.borrow().racks.iter() {
+            let rack = rack_arc.borrow();
+            if option.rack != "" && option.rack != rack.id {
+                continue;
+            }
+
+            if rack.free_volumes() < rp.same_rack_count as i64 + 1 {
+                return Err(Error::NoFreeSpace);
+            }
+
+            if rack.nodes.len() < rp.same_rack_count as usize + 1 {
+                return Err(Error::NoFreeSpace);
+            }
+
+            let mut possible_nodes = 0;
+            for (node_id, node) in rack.nodes.iter() {
+                if node.borrow().free_volumes() < 1 {
+                    continue
+                }
+
+                possible_nodes += 1;
+            }
+
+            if possible_nodes < rp.same_rack_count as usize + 1 {
+                return Err(Error::NoFreeSpace);
+            }
+            valid_rack_count += 1;
+
+            if random::<u32>() % valid_rack_count == 0 {
+                main_rack = Some(rack_arc.clone());
+            }
+        }
+
+        if main_rack.is_none() {
+            return Err(Error::NoFreeSpace);
+        }
+
+        let main_rack_arc = main_rack.unwrap();
+
+        if rp.diff_rack_count > 0 {
+            for (rack_id, rack_arc) in main_dc_arc.borrow().racks.iter() {
+                let rack = rack_arc.borrow();
+                if *rack_id == main_rack_arc.borrow().id || rack.free_volumes() < 1 {
+                    continue;
+                }
+                other_racks.push(rack_arc.clone());
+            }
+        }
+
+        if other_racks.len() < rp.diff_rack_count as usize {
+            return Err(Error::NoFreeSpace);
+        }
+
+        thread_rng().shuffle(other_racks.as_mut_slice());
+        let tmp_racks = other_racks.drain(0..rp.diff_rack_count as usize).collect();
+        other_racks = tmp_racks; 
+        
+
+        // find main node
+        let mut valid_node = 0;
+        for (node_id, node) in main_rack_arc.borrow().nodes.iter() {
+            if option.data_node != "" && option.data_node != *node_id {
+                continue;
+            }
+            if node.borrow().free_volumes() < 1 {
+                return Err(Error::NoFreeSpace);
+            }
+
+            valid_node += 1;
+            if random::<u32>() % valid_node == 0 {
+                main_nd = Some(node.clone());
+            }
+        }
+
+        if main_nd.is_none() {
+            return Err(Error::NoFreeSpace);
+        }
+        let main_nd_arc = main_nd.unwrap().clone();
+
+
+        if rp.same_rack_count > 0 {
+            for (node_id, node) in main_rack_arc.borrow().nodes.iter() {
+                let node_ref = node.borrow();
+
+                if *node_id == main_nd_arc.borrow().id || node_ref.free_volumes() < 1 {
+                    continue;
+                }
+                other_nodes.push(node.clone());
+            }
+        }
+
+        if other_nodes.len() < rp.same_rack_count as usize {
+            return Err(Error::NoFreeSpace);
+        }
+        thread_rng().shuffle(other_nodes.as_mut_slice());
+        let tmp_nodes = other_nodes.drain(0..rp.same_rack_count as usize).collect();
+        other_nodes =  tmp_nodes;
+
+        
+        let mut ret = vec![];
+        ret.push(main_nd_arc.clone());
+
+        for nd in other_nodes {
+            ret.push(nd.clone());
+        }
+
+        for rack in other_racks {
+            let node = rack.borrow().reserve_one_volume()?;
+            ret.push(node);
+        }
+
+        for dc in other_centers {
+            let node = dc.borrow().reserve_one_volume()?;
+            ret.push(node);
+        }
+
+
+        Ok(ret)
     }
 
     fn find_and_grow(&self, option: &VolumeGrowOption, topo: &Topology) -> Result<i64> {
         panic!("todo");
-
-        Ok(1)
     }
 
     fn grow_by_count_and_type(&self, count: i64, option: &VolumeGrowOption, topo: &Topology) -> Result<i64> {
         let mut grow_count = 0;
-        for i in 0..count {
+        for _ in 0..count {
             match self.find_and_grow(option, topo) {
                 Ok(v) => grow_count += v,
                 Err(err) => {
@@ -60,24 +255,24 @@ impl VolumeGrow {
         Ok(grow_count)
     }
 
-    fn grow(&self, vid: VolumeId, option: &VolumeGrowOption, topo: &Topology, nodes: Vec<Rc<DataNode>>) -> Result<()> {
+    fn grow(&self, vid: VolumeId, option: &VolumeGrowOption, topo: &mut Topology, nodes: Vec<Arc<RefCell<DataNode>>>) -> Result<()> {
         for nd in nodes {
-            // let a: u8 = nd;
-            allocate_volume(&nd, vid, option)?;
-            let volumeInfo = VolumeInfo {
+            allocate_volume(&nd.borrow(), vid, option)?;
+            let volume_info = VolumeInfo {
                 id: vid,
                 size: 0,
                 collection: option.collection.clone(),
                 replica_placement: option.replica_placement,
                 ttl: option.ttl,
-                version: storage::CurrentVersion,
+                version: storage::CURRENT_VERSION,
                 ..Default::default()
             };
-            // TODO init
-            // topo.registerVolumeLayout(vi, nd)
+
+            let mut mut_node = nd.borrow_mut();
+            mut_node.add_or_update_volume(volume_info.clone());
+
+            topo.register_volume_layout(volume_info, nd.clone());
              
-            // let mut tmp = nd.clone();
-            // tmp.add_or_update_volume(volumeInfo)
         }
         Ok(())
     }
@@ -91,16 +286,12 @@ pub struct VolumeGrowOption {
     pub replica_placement: storage::ReplicaPlacement,
     pub ttl: storage::TTL,
     pub preallocate: i64,
-    pub DataCenter: String,
-    pub Rack: String,
-    pub DataNode: String,
+    pub data_center: String,
+    pub rack: String,
+    pub data_node: String,
 }
 
 impl VolumeGrowOption {
-    // fn new() -> VolumeGrowOption {
-    //     panic!("todo");
-    //     VolumeGrowOption{}
-    // }
 }
 
 
