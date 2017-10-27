@@ -31,6 +31,8 @@ pub struct DataNode {
     pub max_volumes: i64,
 }
 
+unsafe impl Send for DataNode {}
+
 impl DataNode {
 	pub fn new(id: &str, ip: &str, port: i64, public_url: &str, max_volumes: i64) -> DataNode {
 		DataNode {
@@ -76,6 +78,31 @@ impl DataNode {
             Some(rack) => return rack.borrow().get_data_center_id(),
             None => String::from(""),
         }
+    }
+
+    pub fn update_volumes(&mut self, infos: Vec<VolumeInfo>) -> Vec<VolumeInfo> {
+
+        let mut infos_map = HashMap::new();
+        for info in infos.iter() {
+            infos_map.insert(info.id, info.clone());
+        }
+
+        let mut deleted_id: Vec<VolumeId> = vec![];
+        let mut deleted: Vec<VolumeInfo> = vec![];
+
+        for (id, has) in self.volumes.iter_mut() {
+            match infos_map.get(&id) {
+                Some(new) => *has = new.clone(),
+                None => deleted_id.push(has.id),
+            }
+        }
+
+        for id in deleted_id.iter() {
+            deleted.push(self.volumes.remove(id).unwrap())
+        }
+
+
+        deleted
     }
 }
 

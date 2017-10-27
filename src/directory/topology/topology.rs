@@ -1,6 +1,7 @@
 use directory::sequencer::*;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::cell::RefCell;
 
 use super::{DataCenter, DataNode, Collection, VolumeLayout, VolumeGrowOption};
@@ -26,6 +27,7 @@ pub struct Topology {
     pub data_centers: HashMap<String, Arc<RefCell<DataCenter>>>,
 }
 
+unsafe impl Send for Topology {}
 
 impl Topology {
     pub fn new(seq: MemorySequencer, volume_size_limit: u64, pulse: u64) -> Topology {
@@ -122,6 +124,11 @@ impl Topology {
     pub fn register_volume_layout(&mut self, vi: storage::VolumeInfo, dn: Arc<RefCell<DataNode>>) {
         self.get_volume_layout(&vi.collection, vi.replica_placement, vi.ttl)
             .register_volume(&vi, dn);
+    }
+
+    pub fn un_register_volume_layout(&mut self, vi: storage::VolumeInfo, dn: Arc<RefCell<DataNode>>) {
+        self.get_volume_layout(&vi.collection, vi.replica_placement, vi.ttl)
+            .un_register_volume(&vi, dn);
     }
 
 }

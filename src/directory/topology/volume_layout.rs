@@ -120,9 +120,27 @@ impl VolumeLayout {
        let list = self.vid2location.entry(v.id) 
            .or_insert(vec![]);
        VolumeLayout::set_node(list, dn.clone());
+    }
 
-       
-        
+    fn remove_from_writable(&mut self, vid: VolumeId) {
+        let mut idx: Option<usize> = None;
+        let mut i = 0;
+        for v in self.writable_volumes.iter() {
+            if *v == vid {
+                idx = Some(i);
+                break;
+            }
+
+            i = i + 1;
+        }
+
+        if idx.is_some() {
+            self.writable_volumes.remove(idx.unwrap());
+        }
+    }
+
+    pub fn un_register_volume(&mut self, v: &VolumeInfo, dn: Arc<RefCell<DataNode>>) {
+        self.remove_from_writable(v.id);
     }
 
     pub fn lookup(&self, vid: VolumeId) -> Option<Vec<Arc<RefCell<DataNode>>>> {

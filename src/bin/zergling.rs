@@ -79,7 +79,7 @@ fn main() {
 
     let mut ip = "localhost";
     let mut ip_bind = "0.0.0.0";
-    let mut port = 9334;
+    let mut port = 9333;
     let mut volume_size_limit_mb = 30*1000;
     let mut replica_placement = storage::ReplicaPlacement::new("000").unwrap();
     let mut pluse = 5;

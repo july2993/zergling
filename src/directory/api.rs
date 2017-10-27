@@ -13,6 +13,7 @@ use hyper::header::ContentLength;
 use hyper::server::{Request, Response, Service};
 use hyper::{Method};
 use url::Url;
+use operation::ClusterStatusResult;
 
 
 
@@ -32,6 +33,8 @@ pub struct Context {
     pub topo: Arc<Mutex<Topology>>,    
     pub vg: Arc<Mutex<VolumeGrow>>,
     pub default_replica_placement: storage::ReplicaPlacement,
+    pub ip: String,
+    pub port: u16,
 }
 
 
@@ -73,7 +76,13 @@ impl Service for Context {
                 let ret = future::result(map_err(handle));
                 Box::new(ret)
             },
-            _ => {
+            (&Method::Get, "/cluster/status") => {
+                let handle = culster_status_handler(&req, self);
+                let ret = future::result(map_err(handle));
+                Box::new(ret)
+            }
+            (method, path) => {
+                warn!("unknow request: [{}] {}", method, path);
                 Box::new(futures::future::ok(
                     Response::new()
                         .with_header(ContentLength(PHRASE.len() as u64))
@@ -121,7 +130,6 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
 
     let option = ctx.get_volume_grow_option(&params)?;
 
-
     let mut topo = ctx.topo.lock().unwrap();
     if !topo.has_writable_volume(&option) {
         if topo.free_volumes() <= 0 {
@@ -151,3 +159,19 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
            .with_header(ContentLength(j.len() as u64))
            .with_body(j))
 }
+
+pub fn culster_status_handler(req: &Request, ctx: &Context) -> Result<Response> {
+    let res = ClusterStatusResult {
+        IsLeader: true,
+        Leader: format!("{}:{}", ctx.ip, ctx.port),
+        Peers: vec![],
+    };
+
+    let j = serde_json::to_string(&res)
+        .map_err(Error::from)?;
+
+    Ok(Response::new()
+           .with_header(ContentLength(j.len() as u64))
+           .with_body(j))
+}
+

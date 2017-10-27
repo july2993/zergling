@@ -6,13 +6,13 @@ use std::ops::Add;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Unit {
-    Empty,
-    Minute,
-    Hour,
-    Day,
-    Week,
-    Month,
-    Year,
+    Empty = 0,
+    Minute = 1,
+    Hour = 2,
+    Day = 3,
+    Week = 4,
+    Month = 5,
+    Year = 6,
 }
 
 impl Default for Unit {
@@ -22,6 +22,19 @@ impl Default for Unit {
 }
 
 impl Unit {
+    fn from_u8_idx(u: u8) -> Option<Unit> {
+        match u {
+            0 => Some(Unit::Empty),
+            1 => Some(Unit::Minute),
+            2 => Some(Unit::Hour),
+            3 => Some(Unit::Day),
+            4 => Some(Unit::Week),
+            5 => Some(Unit::Month),
+            6 => Some(Unit::Year),
+            _ => None,
+        }
+    }
+
     fn new(u: u8) -> Option<Unit> {
         match char::from(u) {
             'm' => Some(Unit::Minute),
@@ -87,6 +100,7 @@ impl TTL {
             count_bytes = bytes;
         }
 
+
         if let Ok(count) = String::from_utf8(count_bytes.to_vec()).unwrap().parse::<u8>() {
             if let Some(unit) = Unit::new(unit) {
                 let ttl = TTL {
@@ -113,5 +127,24 @@ impl TTL {
         s
     }
 
-
 }
+
+impl From<u32> for TTL {
+    fn from(u: u32) -> Self {
+        let mut vec: Vec<u8> = vec![];
+        vec.push((u % 0xff) as u8);
+        vec.push(((u >> 8) % 0xff) as u8);
+
+        TTL::from(vec)
+    }
+}
+
+impl From<Vec<u8>> for TTL {
+    fn from(u: Vec<u8>) -> Self {
+        TTL {
+            count: u[0],
+            unit: Unit::from_u8_idx(u[1]).unwrap(),
+        }
+    }
+}
+
