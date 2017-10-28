@@ -26,7 +26,7 @@ use futures::Stream;
 use super::api::*;
 
 use pb;
-use pb::zergling_grpc::Zergling as ZService;
+use pb::zergling_grpc::Seaweed as ZService;
 use pb::zergling::*;
 use directory::topology::VolumeGrow;
 use storage;
@@ -83,16 +83,13 @@ impl Server {
 
 
         let env = Arc::new(Environment::new(2));
-    	let service = zergling_grpc::create_zergling(self.clone());
+    	let service = zergling_grpc::create_seaweed(self.clone());
     	let mut server = ServerBuilder::new(env)
         	.register_service(service)
         	.bind("127.0.0.1", self.port + 1)
         	.build()
         	.unwrap();
     	server.start();
-
-
-
 
 
         let ctx = Context{
@@ -151,8 +148,10 @@ impl ZService for Server {
 
                 let dc = topo.get_or_create_data_center(&dc_name);
                 let rack = dc.borrow_mut().get_or_create_rack(&rack_name);
+                rack.borrow_mut().data_center = Arc::downgrade(&dc);
                 let node_name = format!("{}:{}", ip, heartbeat.port);
                 let node = rack.borrow_mut().get_or_create_data_node(&node_name, &ip, heartbeat.port as i64, &heartbeat.public_url, heartbeat.max_volume_count as i64);
+                node.borrow_mut().rack = Arc::downgrade(&rack);
 
 
                 let mut infos = vec![];

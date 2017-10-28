@@ -138,7 +138,7 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
 
         let mut vg = ctx.vg.lock().unwrap();
 
-        vg.grow_by_type(&option, &topo)?;
+        vg.grow_by_type(&option, &mut topo)?;
         
     }
     

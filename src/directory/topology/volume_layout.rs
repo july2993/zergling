@@ -100,20 +100,25 @@ impl VolumeLayout {
     }
 
     fn set_node(list: &mut Vec<Arc<RefCell<DataNode>>>, nd: Arc<RefCell<DataNode>>) {
-        for e in list.iter_mut() {
-            {
-                let e_ref = e.borrow();
-                let nd_ref = nd.borrow();
-             
-                if e_ref.ip != nd_ref.ip || e_ref.port != nd_ref.port {
-                    continue
-                }
+        debug!("set node: {:?} {:?}", list, nd);
+        let mut same: Option<usize> = None;
+        let mut i = 0;
+        for e in list.iter() {
+            let e_ref = e.borrow();
+            let nd_ref = nd.borrow();
+            if e_ref.ip != nd_ref.ip || e_ref.port != nd_ref.port {
+                continue
             }
-            *e = nd.clone();
-            break;
-        } 
 
-        list.push(nd.clone())
+            same = Some(i);
+            i += 1;
+            break;
+        }
+        if let Some(idx) = same {
+            list[idx] = nd.clone();
+        } else {
+            list.push(nd.clone())
+        }
     }
 
     pub fn register_volume(&mut self, v: &VolumeInfo, dn: Arc<RefCell<DataNode>>) {

@@ -23,7 +23,7 @@ impl VolumeGrow {
         VolumeGrow{}
     }
 
-    pub fn grow_by_type(&self, option: &VolumeGrowOption, topo: &Topology) -> Result<i64> {
+    pub fn grow_by_type(&self, option: &VolumeGrowOption, topo: &mut Topology) -> Result<i64> {
         let count = self.logical_count(option.replica_placement.get_copy_count());
         self.grow_by_count_and_type(count, option, topo)
     }
@@ -40,7 +40,7 @@ impl VolumeGrow {
     // TODO: to long func...
     // will specify data_node but no data center find a wrong data center to be the
     // main data center first, then no valid data_node ???
-    fn find_empty_slots(&self, option: VolumeGrowOption, topo: &Topology) -> Result<Vec<Arc<RefCell<DataNode>>>> {
+    fn find_empty_slots(&self, option: &VolumeGrowOption, topo: &Topology) -> Result<Vec<Arc<RefCell<DataNode>>>> {
         let mut main_dc: Option<Arc<RefCell<DataCenter>>> = None;
         let mut main_rack: Option<Arc<RefCell<Rack>>> = None;
         let mut main_nd: Option<Arc<RefCell<DataNode>>> = None;
@@ -236,20 +236,18 @@ impl VolumeGrow {
         Ok(ret)
     }
 
-    fn find_and_grow(&self, option: &VolumeGrowOption, topo: &Topology) -> Result<i64> {
-        panic!("todo");
+    fn find_and_grow(&self, option: &VolumeGrowOption, topo: &mut Topology) -> Result<i64> {
+        let nodes = self.find_empty_slots(option, topo)?;
+        let len = nodes.len();
+        let vid = topo.next_volume_id();
+        self.grow(vid, option, topo, nodes)?;
+        Ok(len as i64)
     }
 
-    fn grow_by_count_and_type(&self, count: i64, option: &VolumeGrowOption, topo: &Topology) -> Result<i64> {
+    fn grow_by_count_and_type(&self, count: i64, option: &VolumeGrowOption, topo: &mut Topology) -> Result<i64> {
         let mut grow_count = 0;
         for _ in 0..count {
-            match self.find_and_grow(option, topo) {
-                Ok(v) => grow_count += v,
-                Err(err) => {
-                    // TODO return err?
-                    break;
-                }
-            }
+            grow_count += self.find_and_grow(option, topo)?;
         }
 
         Ok(grow_count)

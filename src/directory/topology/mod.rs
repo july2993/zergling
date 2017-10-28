@@ -19,7 +19,7 @@ pub use self::volume_grow::{VolumeGrow, VolumeGrowOption};
 pub use storage::{ReplicaPlacement,TTL, VolumeId, VolumeInfo};
 
 
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Clone)]
 pub struct DataNode {
     pub id: String,
     pub ip: String,
@@ -29,6 +29,7 @@ pub struct DataNode {
     pub rack: Weak<RefCell<Rack>>,
     pub volumes: HashMap<VolumeId, VolumeInfo>,
     pub max_volumes: i64,
+    pub max_volume_id: VolumeId,
 }
 
 unsafe impl Send for DataNode {}
@@ -44,10 +45,22 @@ impl DataNode {
 			rack: Weak::default(),
 			volumes: HashMap::new(),
 			max_volumes: max_volumes,
+            max_volume_id: 0,
 		}
 	}
+
     pub fn url(&self) -> String {
         format!("{}:{}", self.ip, self.port)
+    }
+
+    pub fn adjust_max_volume_id(&mut self, vid: VolumeId) {
+        if vid > self.max_volume_id {
+            self.max_volume_id = vid;
+        }
+
+        if let Some(rack) = self.rack.upgrade() {
+            rack.borrow_mut().adjust_max_volume_id(self.max_volume_id);
+        }
     }
 
     pub fn add_or_update_volume(&mut self, v: VolumeInfo) {
@@ -81,7 +94,7 @@ impl DataNode {
     }
 
     pub fn update_volumes(&mut self, infos: Vec<VolumeInfo>) -> Vec<VolumeInfo> {
-
+        debug!("{} - update_volumes {:?}", self.id, infos);
         let mut infos_map = HashMap::new();
         for info in infos.iter() {
             infos_map.insert(info.id, info.clone());
@@ -110,6 +123,7 @@ impl DataNode {
 pub struct Rack {
     pub id: String,
     pub nodes: HashMap<String, Arc<RefCell<DataNode>>>,
+    pub max_volume_id: VolumeId,
 
     pub data_center: Weak<RefCell<DataCenter>>,
 	
@@ -121,6 +135,17 @@ impl Rack {
             id: String::from(id),
             nodes: HashMap::new(),
             data_center: Weak::new(),
+            max_volume_id: 0,
+        }
+    }
+
+    pub fn adjust_max_volume_id(&mut self, vid: VolumeId) {
+        if vid > self.max_volume_id {
+            self.max_volume_id = vid;
+        }
+
+        if let Some(dc) = self.data_center.upgrade() {
+            dc.borrow_mut().adjust_max_volume_id(self.max_volume_id);
         }
     }
 
@@ -186,6 +211,7 @@ impl Rack {
 #[derive(Debug)]
 pub struct DataCenter {
     pub id: String,
+    pub max_volume_id: VolumeId,
     pub racks: HashMap<String, Arc<RefCell<Rack>>>,
 }
 
@@ -194,6 +220,13 @@ impl DataCenter {
         DataCenter {
             id: String::from(id),
             racks: HashMap::new(),
+            max_volume_id: 0,
+        }
+    }
+
+    pub fn adjust_max_volume_id(&mut self, vid: VolumeId) {
+        if vid > self.max_volume_id {
+            self.max_volume_id = vid;
         }
     }
 

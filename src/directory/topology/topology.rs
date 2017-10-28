@@ -22,7 +22,6 @@ pub struct Topology {
 
     pub volume_size_limit: u64,
 
-    pub max_volume_id: VolumeId,
 
     pub data_centers: HashMap<String, Arc<RefCell<DataCenter>>>,
 }
@@ -37,7 +36,6 @@ impl Topology {
             pulse: pulse,
             volume_size_limit: volume_size_limit,
             data_centers: HashMap::new(),
-            max_volume_id: 0,
         }
     }
 
@@ -129,6 +127,24 @@ impl Topology {
     pub fn un_register_volume_layout(&mut self, vi: storage::VolumeInfo, dn: Arc<RefCell<DataNode>>) {
         self.get_volume_layout(&vi.collection, vi.replica_placement, vi.ttl)
             .un_register_volume(&vi, dn);
+    }
+
+    pub fn get_max_volume_id(&self) -> VolumeId {
+        let mut vid: VolumeId = 0;
+        for (_, dc) in self.data_centers.iter() {
+            let other = dc.borrow().max_volume_id;
+            if other > vid {
+                vid = other;
+            }
+        }
+
+        vid
+    }
+
+    pub fn next_volume_id(&mut self) -> VolumeId {
+        let vid = self.get_max_volume_id();
+
+        vid + 1
     }
 
 }
