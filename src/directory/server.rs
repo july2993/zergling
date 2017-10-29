@@ -58,14 +58,13 @@ pub struct Server {
 
 impl Server {
     // TODO: add whiteList sk
-    pub fn new(port: u16, meta_folder: &str, volume_size_limit_mb: u64,
+    pub fn new(ip: &str, port: u16, meta_folder: &str, volume_size_limit_mb: u64,
                pluse_seconds: u64,
                default_replica_placement: storage::ReplicaPlacement,
                garbage_threshold: f64,
                seq: MemorySequencer) -> Server {
-        let mut dir = Server {
-            // TODO config?
-            ip: String::from("127.0.0.1"),
+        let dir = Server {
+            ip: String::from(ip),
             volume_size_limit_mb: volume_size_limit_mb,
             port: port,
             garbage_threshold: garbage_threshold,
@@ -79,14 +78,12 @@ impl Server {
     }
 
 
-    pub fn serve(&self) {
-
-
+    pub fn serve(&self, bind_ip: &str) {
         let env = Arc::new(Environment::new(2));
     	let service = zergling_grpc::create_seaweed(self.clone());
     	let mut server = ServerBuilder::new(env)
         	.register_service(service)
-        	.bind("127.0.0.1", self.port + 1)
+        	.bind(bind_ip, self.port + 1)
         	.build()
         	.unwrap();
     	server.start();
@@ -100,7 +97,9 @@ impl Server {
             port: self.port,
         };
 
-        let mut addr_str = "127.0.0.1:".to_string();
+
+        let mut addr_str = bind_ip.to_string();
+        addr_str.push_str(":");
         addr_str.push_str(&self.port.to_string());
         let addr = addr_str.parse().unwrap();
         let server = Http::new().bind(&addr, move || Ok(ctx.clone())).unwrap();

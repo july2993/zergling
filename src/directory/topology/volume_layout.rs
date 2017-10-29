@@ -60,7 +60,7 @@ impl VolumeLayout {
         count
     }
 
-    pub fn pick_for_write(&self, count: u64, option: &VolumeGrowOption) -> Result<(VolumeId, Vec<Arc<RefCell<DataNode>>>)> {
+    pub fn pick_for_write(&self, option: &VolumeGrowOption) -> Result<(VolumeId, Vec<Arc<RefCell<DataNode>>>)> {
         if self.writable_volumes.len() <= 0 {
             return Err(Error::NoWritableVolume(String::from("no writable volumes")));
         }
@@ -108,11 +108,11 @@ impl VolumeLayout {
             let e_ref = e.borrow();
             let nd_ref = nd.borrow();
             if e_ref.ip != nd_ref.ip || e_ref.port != nd_ref.port {
+                i += 1;
                 continue
             }
 
             same = Some(i);
-            i += 1;
             break;
         }
         if let Some(idx) = same {
@@ -199,7 +199,7 @@ impl VolumeLayout {
         }
     }
 
-    pub fn un_register_volume(&mut self, v: &VolumeInfo, dn: Arc<RefCell<DataNode>>) {
+    pub fn un_register_volume(&mut self, v: &VolumeInfo, _dn: Arc<RefCell<DataNode>>) {
         self.remove_from_writable(v.id);
     }
 

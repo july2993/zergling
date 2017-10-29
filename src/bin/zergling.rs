@@ -102,22 +102,22 @@ fn main() {
         mdir = c
     }
 
-    if let Some(matches) = matches.subcommand_matches("master") {
+    if let Some(_matches) = matches.subcommand_matches("master") {
         println!("starting master server[{}]....", port);
 
         let seq = MemorySequencer::new();
 
-        let dir = Server::new(port, mdir,
+        let dir = Server::new(ip, port, mdir,
                               volume_size_limit_mb,
                               pluse,
                               replica_placement,
                               garbage_threshold,
                               seq);
-        dir.serve();
+        dir.serve(ip_bind);
 
     }
 
-    if let Some(matches) = matches.subcommand_matches("volumn") {
+    if let Some(_matches) = matches.subcommand_matches("volumn") {
         println!("starting volumn server....");
 
     }

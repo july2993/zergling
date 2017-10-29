@@ -1,3 +1,5 @@
+// TODO remove allow
+#![allow(dead_code)]
 
 use std::fs::File;
 

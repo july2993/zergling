@@ -143,10 +143,9 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
             return Err(Error::NoFreeSpace(String::from("no writable volume")));
         }
 
-        let mut vg = ctx.vg.lock().unwrap();
+        let vg = ctx.vg.lock().unwrap();
 
         vg.grow_by_type(&option, &mut topo)?;
-        
     }
     
     let (fid, count, node) = topo.pick_for_write(requested_count, &option)?;
@@ -168,7 +167,7 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
            .with_body(j))
 }
 
-pub fn culster_status_handler(req: &Request, ctx: &Context) -> Result<Response> {
+pub fn culster_status_handler(_req: &Request, ctx: &Context) -> Result<Response> {
     let res = ClusterStatusResult {
         IsLeader: true,
         Leader: format!("{}:{}", ctx.ip, ctx.port),

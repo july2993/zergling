@@ -51,7 +51,7 @@ impl VolumeGrow {
         let rp = option.replica_placement;
         let mut valid_main_counts = 0;
         // find main data center
-        for (dc_id, dc_arc) in topo.data_centers.iter() {
+        for (_dc_id, dc_arc) in topo.data_centers.iter() {
             let dc = dc_arc.borrow();
             if option.data_center != "" && dc.id != option.data_center {
                 continue;
@@ -66,7 +66,7 @@ impl VolumeGrow {
             }
 
             let mut possible_racks_count = 0;
-            for (rack_id, rack_arc) in dc.racks.iter() {
+            for (_rack_id, rack_arc) in dc.racks.iter() {
                 let rack = rack_arc.borrow();
                 let mut possible_nodes_count = 0;
                 for (_, nd) in rack.nodes.iter() {
@@ -116,7 +116,7 @@ impl VolumeGrow {
 
         // find main rack
         let mut valid_rack_count = 0;
-        for (rack_id, rack_arc) in main_dc_arc.borrow().racks.iter() {
+        for (_rack_id, rack_arc) in main_dc_arc.borrow().racks.iter() {
             let rack = rack_arc.borrow();
             if option.rack != "" && option.rack != rack.id {
                 continue;
@@ -131,7 +131,7 @@ impl VolumeGrow {
             }
 
             let mut possible_nodes = 0;
-            for (node_id, node) in rack.nodes.iter() {
+            for (_node_id, node) in rack.nodes.iter() {
                 if node.borrow().free_volumes() < 1 {
                     continue
                 }

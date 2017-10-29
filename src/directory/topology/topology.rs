@@ -1,7 +1,6 @@
 use directory::sequencer::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::cell::RefCell;
 
 use super::{DataCenter, DataNode, Collection, VolumeLayout, VolumeGrowOption};
@@ -104,7 +103,7 @@ impl Topology {
         let ret: (VolumeId, Vec<Arc<RefCell<DataNode>>>);
         {
             let layout = self.get_volume_layout(&option.collection, option.replica_placement, option.ttl);
-            ret = layout.pick_for_write(count, &option)?;
+            ret = layout.pick_for_write(&option)?;
         }
 
         let (file_id, c) = self.sequence.next_file_id(count);

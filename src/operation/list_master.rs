@@ -1,4 +1,5 @@
 
+#[allow(non_snake_case)]
 #[derive(Serialize, Deserialize)]
 pub struct ClusterStatusResult {
     pub IsLeader: bool,
