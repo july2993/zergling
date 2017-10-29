@@ -71,6 +71,11 @@ impl Service for Context {
 
     fn call(&self, req: Request) -> Self::Future {
         match (req.method(), req.path()) {
+            // seaweedfs will call this to check wheather master is alive
+            (&Method::Get, "/stats") => {
+                Box::new(futures::future::ok(
+                    Response::new()))
+            },
             (&Method::Get, "/dir/assign") => {
                 let handle = assign_handler(&req, self);
                 let ret = future::result(map_err(handle));
@@ -129,11 +134,13 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
     };
 
     let option = ctx.get_volume_grow_option(&params)?;
+    debug!("get option: {:?}", option);
 
     let mut topo = ctx.topo.lock().unwrap();
     if !topo.has_writable_volume(&option) {
+        debug!("no writable volume");
         if topo.free_volumes() <= 0 {
-            return Err(Error::NoFreeSpace);
+            return Err(Error::NoFreeSpace(String::from("no writable volume")));
         }
 
         let mut vg = ctx.vg.lock().unwrap();
@@ -143,6 +150,7 @@ pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {
     }
     
     let (fid, count, node) = topo.pick_for_write(requested_count, &option)?;
+    
     let dn = node.borrow();
     let assign_resp = AssignResult {
         fid: fid,

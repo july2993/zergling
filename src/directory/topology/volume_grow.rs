@@ -91,7 +91,7 @@ impl VolumeGrow {
         }
 
         if main_dc.is_none() {
-            return Err(Error::NoFreeSpace)
+            return Err(Error::NoFreeSpace("find main dc fail".to_string()));
         }
         let main_dc_arc = main_dc.unwrap();
         
@@ -106,7 +106,7 @@ impl VolumeGrow {
             }
         }
         if other_centers.len() < rp.diff_data_center_count as usize {
-            return Err(Error::NoFreeSpace);
+            return Err(Error::NoFreeSpace("no enough data centers".to_string()));
         }
 
         thread_rng().shuffle(other_centers.as_mut_slice());
@@ -123,11 +123,11 @@ impl VolumeGrow {
             }
 
             if rack.free_volumes() < rp.same_rack_count as i64 + 1 {
-                return Err(Error::NoFreeSpace);
+                continue;
             }
 
             if rack.nodes.len() < rp.same_rack_count as usize + 1 {
-                return Err(Error::NoFreeSpace);
+                continue;
             }
 
             let mut possible_nodes = 0;
@@ -140,7 +140,7 @@ impl VolumeGrow {
             }
 
             if possible_nodes < rp.same_rack_count as usize + 1 {
-                return Err(Error::NoFreeSpace);
+                continue
             }
             valid_rack_count += 1;
 
@@ -150,7 +150,7 @@ impl VolumeGrow {
         }
 
         if main_rack.is_none() {
-            return Err(Error::NoFreeSpace);
+            return Err(Error::NoFreeSpace("find main rack fail".to_string()));
         }
 
         let main_rack_arc = main_rack.unwrap();
@@ -166,7 +166,7 @@ impl VolumeGrow {
         }
 
         if other_racks.len() < rp.diff_rack_count as usize {
-            return Err(Error::NoFreeSpace);
+            return Err(Error::NoFreeSpace("no enough racks".to_string()));
         }
 
         thread_rng().shuffle(other_racks.as_mut_slice());
@@ -181,7 +181,7 @@ impl VolumeGrow {
                 continue;
             }
             if node.borrow().free_volumes() < 1 {
-                return Err(Error::NoFreeSpace);
+                continue;
             }
 
             valid_node += 1;
@@ -191,7 +191,7 @@ impl VolumeGrow {
         }
 
         if main_nd.is_none() {
-            return Err(Error::NoFreeSpace);
+            return Err(Error::NoFreeSpace("find main node fail".to_string()));
         }
         let main_nd_arc = main_nd.unwrap().clone();
 
@@ -208,7 +208,7 @@ impl VolumeGrow {
         }
 
         if other_nodes.len() < rp.same_rack_count as usize {
-            return Err(Error::NoFreeSpace);
+            return Err(Error::NoFreeSpace("no enough  nodes".to_string()));
         }
         thread_rng().shuffle(other_nodes.as_mut_slice());
         let tmp_nodes = other_nodes.drain(0..rp.same_rack_count as usize).collect();
@@ -266,8 +266,10 @@ impl VolumeGrow {
                 ..Default::default()
             };
 
-            let mut mut_node = nd.borrow_mut();
-            mut_node.add_or_update_volume(volume_info.clone());
+            {
+                let mut mut_node = nd.borrow_mut();
+                mut_node.add_or_update_volume(volume_info.clone());
+            }
 
             topo.register_volume_layout(volume_info, nd.clone());
              

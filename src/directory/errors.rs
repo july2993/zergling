@@ -17,8 +17,8 @@ quick_error! {
         GetOptionErr(t: String) {
             display("parse {} error", t)
         }
-        NoFreeSpace {
-            display("No free volume left")
+        NoFreeSpace(t: String) {
+            display("no free space: {}", t)
         }
         NoWritableVolume(msg: String) {
             display("No more writable volume: {}", msg)

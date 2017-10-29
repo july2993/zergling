@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::sync::Weak;
 use directory::errors::{Result, Error};
+use std::fmt;
 
 use rand::random;
 
@@ -17,6 +18,7 @@ pub use self::volume_layout::VolumeLayout;
 pub use self::volume_grow::{VolumeGrow, VolumeGrowOption};
 
 pub use storage::{ReplicaPlacement,TTL, VolumeId, VolumeInfo};
+
 
 
 #[derive(Debug,Default,Clone)]
@@ -33,6 +35,13 @@ pub struct DataNode {
 }
 
 unsafe impl Send for DataNode {}
+
+impl fmt::Display for DataNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}, volumes: {})", self.id, self.volumes.len())
+    }
+}
+
 
 impl DataNode {
 	pub fn new(id: &str, ip: &str, port: i64, public_url: &str, max_volumes: i64) -> DataNode {
@@ -64,6 +73,7 @@ impl DataNode {
     }
 
     pub fn add_or_update_volume(&mut self, v: VolumeInfo) {
+        self.adjust_max_volume_id(v.id);
         self.volumes.insert(v.id, v);
     }
 
@@ -94,7 +104,7 @@ impl DataNode {
     }
 
     pub fn update_volumes(&mut self, infos: Vec<VolumeInfo>) -> Vec<VolumeInfo> {
-        debug!("{} - update_volumes {:?}", self.id, infos);
+        // debug!("{} - update_volumes {:?}", self.id, infos);
         let mut infos_map = HashMap::new();
         for info in infos.iter() {
             infos_map.insert(info.id, info.clone());
@@ -105,15 +115,18 @@ impl DataNode {
 
         for (id, has) in self.volumes.iter_mut() {
             match infos_map.get(&id) {
-                Some(new) => *has = new.clone(),
+                Some(_) => {},
                 None => deleted_id.push(has.id),
             }
+        }
+
+        for vi in infos.iter() {
+            self.add_or_update_volume(vi.clone());
         }
 
         for id in deleted_id.iter() {
             deleted.push(self.volumes.remove(id).unwrap())
         }
-
 
         deleted
     }
@@ -203,7 +216,7 @@ impl Rack {
             }
         }
 
-        return  Err(Error::NoFreeSpace);
+        return  Err(Error::NoFreeSpace(format!("reserve_one_volume on rack {} fail", self.id)));
     }
 }
 
@@ -277,7 +290,7 @@ impl DataCenter {
             }
         }
 
-        Err(Error::NoFreeSpace)
+        Err(Error::NoFreeSpace(String::from(format!("reserve_one_volume on dc {} fail", self.id))))
     }
 }
 

@@ -23,6 +23,8 @@ pub fn post(url: &str, params: &Vec<(&str, &str)>) -> Result<Vec<u8>, String> {
 
     let uri = url.into_string().parse::<hyper::Uri>().map_err(|e| String::from(e.description()))?;
 
+    debug!("post: {}", uri);
+
     {
 	let work = client.get(uri).and_then(|res| {
 	    // println!("Response: {}", res.status());
@@ -34,6 +36,8 @@ pub fn post(url: &str, params: &Vec<(&str, &str)>) -> Result<Vec<u8>, String> {
 
 	core.run(work).map_err(|e| String::from(e.description()))?;
     }
+
+    debug!("resp: {}", String::from_utf8(body.clone()).unwrap());
 
     Ok(body)
 }

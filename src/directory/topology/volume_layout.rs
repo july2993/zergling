@@ -10,6 +10,7 @@ use storage::{VolumeId, ReplicaPlacement, TTL};
 use directory::topology::{DataNode, VolumeGrowOption, VolumeInfo};
 
 use directory::errors::{Result,Error};
+use storage;
 
 
 #[derive(Debug)]
@@ -100,7 +101,7 @@ impl VolumeLayout {
     }
 
     fn set_node(list: &mut Vec<Arc<RefCell<DataNode>>>, nd: Arc<RefCell<DataNode>>) {
-        debug!("set node: {:?} {:?}", list, nd);
+        // debug!("set node: {:?} {:?}", list, nd);
         let mut same: Option<usize> = None;
         let mut i = 0;
         for e in list.iter() {
@@ -122,9 +123,63 @@ impl VolumeLayout {
     }
 
     pub fn register_volume(&mut self, v: &VolumeInfo, dn: Arc<RefCell<DataNode>>) {
-       let list = self.vid2location.entry(v.id) 
-           .or_insert(vec![]);
-       VolumeLayout::set_node(list, dn.clone());
+        {
+            let list = self.vid2location.entry(v.id) 
+                .or_insert(vec![]);
+            VolumeLayout::set_node(list, dn.clone());
+        }
+
+       let list = self.vid2location.get(&v.id).unwrap().clone();
+
+       for node in list.iter() {
+           match node.borrow().volumes.get(&v.id) {
+               Some(v) => {
+                    if v.read_only {
+                        self.remove_from_writable(v.id);
+                        self.readonly_volumes.insert(v.id);
+                    }
+               },
+               None => {
+                   self.remove_from_writable(v.id);
+                   self.readonly_volumes.remove(&v.id);
+               }
+           }
+       }
+
+       if list.len() == self.rp.get_copy_count() as usize && self.is_writable(v) {
+            if self.oversize_volumes.get(&v.id).is_none() {
+                self.add_to_writable(v.id);
+            }
+       } else {
+            self.remove_from_writable(v.id);
+            self.set_oversized_if_need(v);
+       }
+
+    }
+
+    fn set_oversized_if_need(&mut self, v: &VolumeInfo) {
+        if self.is_oversized(v) {
+            self.oversize_volumes.insert(v.id);
+        }
+    }
+
+    fn is_oversized(&self, v: &VolumeInfo) -> bool {
+        return v.size >= self.volume_size_limit
+    }
+
+    fn is_writable(&self, v: &VolumeInfo) -> bool {
+        return !self.is_oversized(v) &&
+            v.version == storage::CURRENT_VERSION &&
+            !v.read_only
+    }
+
+    fn add_to_writable(&mut self, vid: VolumeId) {
+        for id in self.writable_volumes.iter() {
+            if *id == vid {
+                return;
+            }
+        }
+        self.writable_volumes.push(vid);
     }
 
     fn remove_from_writable(&mut self, vid: VolumeId) {
