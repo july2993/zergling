@@ -1,18 +1,18 @@
 
-use super::{Error, Result};
+use super::{Result};
 use storage::errors::Error::ParseTTL;
 use std::ops::Add;
 // use std::marker::Clone;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Unit {
-    Empty,
-    Minute,
-    Hour,
-    Day,
-    Week,
-    Month,
-    Year,
+    Empty = 0,
+    Minute = 1,
+    Hour = 2,
+    Day = 3,
+    Week = 4,
+    Month = 5,
+    Year = 6,
 }
 
 impl Default for Unit {
@@ -22,6 +22,19 @@ impl Default for Unit {
 }
 
 impl Unit {
+    fn from_u8_idx(u: u8) -> Option<Unit> {
+        match u {
+            0 => Some(Unit::Empty),
+            1 => Some(Unit::Minute),
+            2 => Some(Unit::Hour),
+            3 => Some(Unit::Day),
+            4 => Some(Unit::Week),
+            5 => Some(Unit::Month),
+            6 => Some(Unit::Year),
+            _ => None,
+        }
+    }
+
     fn new(u: u8) -> Option<Unit> {
         match char::from(u) {
             'm' => Some(Unit::Minute),
@@ -35,13 +48,13 @@ impl Unit {
     }
 
     fn string(&self) -> String {
-        match self {
-            Minute => String::from("m"),
-            Hour => String::from("h"),
-            Day => String::from("d"),
-            Week => String::from("w"),
-            Month => String::from("M"),
-            Year => String::from("y"),
+        match *self {
+            Unit::Minute => String::from("m"),
+            Unit::Hour => String::from("h"),
+            Unit::Day => String::from("d"),
+            Unit::Week => String::from("w"),
+            Unit::Month => String::from("M"),
+            Unit::Year => String::from("y"),
             _ => String::from(""),
         }
     }
@@ -49,15 +62,15 @@ impl Unit {
 
 #[derive(Debug, Copy, Default)]
 pub struct TTL {
-    pub Count: u8,
-    pub Unit: Unit,
+    pub count: u8,
+    pub unit: Unit,
 }
 
 impl Clone for TTL {
     fn clone(&self) -> TTL {
         TTL {
-            Count: self.Count,
-            Unit: self.Unit,
+            count: self.count,
+            unit: self.unit,
         }
     }
 }
@@ -72,7 +85,7 @@ impl Clone for TTL {
 // 8y
 
 impl TTL {
-    fn new(s: String) -> Result<TTL> {
+    pub fn new(s: &str) -> Result<TTL> {
         if s.is_empty() {
             return Err(ParseTTL(String::from(s)));
         }
@@ -80,38 +93,58 @@ impl TTL {
         let bytes = s.as_bytes();
 
         let mut unit = bytes[bytes.len() - 1];
-        let mut countBytes = &bytes[..bytes.len() - 1];
+        let mut count_bytes = &bytes[..bytes.len() - 1];
 
         if unit >= '0'  as u8 && unit <= '9' as u8 {
             unit = 'm' as u8;
-            countBytes = bytes;
+            count_bytes = bytes;
         }
 
-        if let Ok(count) = String::from_utf8(countBytes.to_vec()).unwrap().parse::<u8>() {
+
+        if let Ok(count) = String::from_utf8(count_bytes.to_vec()).unwrap().parse::<u8>() {
             if let Some(unit) = Unit::new(unit) {
                 let ttl = TTL {
-                    Count: count,
-                    Unit: unit,
+                    count: count,
+                    unit: unit,
                 };
                 return Ok(ttl);
             }
 
         }
 
-        return Err(ParseTTL(s.clone()));
+        return Err(ParseTTL(String::from(s)));
     }
 
     pub fn string(&self) -> String {
-        if self.Count == 0 {
+        if self.count == 0 {
             return String::from("");
         }
 
-        let mut s = self.Count.to_string();
+        let mut s = self.count.to_string();
 
-        s = s.add(&self.Unit.string());
+        s = s.add(&self.unit.string());
 
         s
     }
 
-
 }
+
+impl From<u32> for TTL {
+    fn from(u: u32) -> Self {
+        let mut vec: Vec<u8> = vec![];
+        vec.push((u % 0xff) as u8);
+        vec.push(((u >> 8) % 0xff) as u8);
+
+        TTL::from(vec)
+    }
+}
+
+impl From<Vec<u8>> for TTL {
+    fn from(u: Vec<u8>) -> Self {
+        TTL {
+            count: u[0],
+            unit: Unit::from_u8_idx(u[1]).unwrap(),
+        }
+    }
+}
+

@@ -1,7 +1,7 @@
 
 
 pub trait Sequencer {
-    fn NextFileId(&self, count: u64) -> (u64, u64);
-    fn SetMax(&self, u64);
-    fn Peek(&self) -> u64;
+    fn next_file_id(&self, count: u64) -> (u64, u64);
+    fn set_max(&self, u64);
+    fn peek(&self) -> u64;
 }

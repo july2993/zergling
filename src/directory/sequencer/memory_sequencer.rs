@@ -17,22 +17,22 @@ impl MemorySequencer {
 
 
 impl Sequencer for MemorySequencer {
-    fn NextFileId(&self, count: u64) -> (u64, u64) {
+    fn next_file_id(&self, count: u64) -> (u64, u64) {
         let mut counter = self.counter.lock().unwrap();
         let ret = *counter;
         *counter += count;
         (ret, count)
     }
 
-    fn SetMax(&self, seenValue: u64) {
+    fn set_max(&self, seen_value: u64) {
         let mut counter = self.counter.lock().unwrap();
-        if *counter <= seenValue {
-            *counter = seenValue;
+        if *counter <= seen_value {
+            *counter = seen_value;
         }
     }
 
-    fn Peek(&self) -> u64 {
-        let mut counter = self.counter.lock().unwrap();
+    fn peek(&self) -> u64 {
+        let counter = self.counter.lock().unwrap();
         
         *counter
     }

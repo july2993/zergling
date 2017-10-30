@@ -4,7 +4,7 @@ package pb;
 
 //////////////////////////////////////////////////
 
-service Zergling {
+service Seaweed {
   rpc SendHeartbeat(stream Heartbeat) returns (stream HeartbeatResponse) {}
 }
 

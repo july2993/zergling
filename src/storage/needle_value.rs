@@ -2,7 +2,7 @@
 
 
 pub struct NeedleValue {
-    pub Key: u64,
-    pub Offset: u32,
-    pub Size: u32,
+    pub key: u64,
+    pub offset: u32,
+    pub size: u32,
 }

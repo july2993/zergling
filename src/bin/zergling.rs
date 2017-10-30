@@ -1,19 +1,51 @@
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
+
+#![allow(unused_mut)]
+#![allow(unused_imports)]
+
 extern crate zergling;
 // extern crate env_logger;
 #[macro_use]
 extern crate log;
+extern crate env_logger;
+
 extern crate clap;
+extern crate chrono;
+
 
 // use log::Level;
 use clap::{App, Arg, ArgMatches, SubCommand};
+use env_logger::LogBuilder;
+use chrono::Local;
+use std::env;
 
 
+use zergling::storage;
 use zergling::directory::server::Server;
 use zergling::directory::sequencer::MemorySequencer;
 
 
 fn main() {
-    debug!("this is a debug {}", "message");
+	LogBuilder::new()
+        .format(|record| {
+                    format!("{} [{}:{}] - {} {}",
+                            Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                            record.location().file().rsplit('/').nth(0).unwrap(),
+                            record.location().line(),
+                            record.level(),
+                            record.args())
+                })
+        .parse(&env::var("ZERGLING_LOG").unwrap_or_default())
+        .init().unwrap();
+
+    // #[warn(unused_must_use)]
+    // env_logger::init();
+
+
+    debug!("this is printed by default");
+    info!("this is printed by default");
+    warn!("this is printed by default");
     error!("this is printed by default");
 
     let matches = App::new("zergling")
@@ -47,11 +79,11 @@ fn main() {
 
     let mut ip = "localhost";
     let mut ip_bind = "0.0.0.0";
-    let mut port = 9334;
-    let mut volumeSizeLimitMB = 30*1000;
-    let mut replicaPlacement = String::from("000");
+    let mut port = 9333;
+    let mut volume_size_limit_mb = 30*1000;
+    let mut replica_placement = storage::ReplicaPlacement::new("000").unwrap();
     let mut pluse = 5;
-    let mut garbageThreshold = 0.3;
+    let mut garbage_threshold = 0.3;
 
     // TODO change default
     let mut mdir = "./";
@@ -70,22 +102,22 @@ fn main() {
         mdir = c
     }
 
-    if let Some(matches) = matches.subcommand_matches("master") {
+    if let Some(_matches) = matches.subcommand_matches("master") {
         println!("starting master server[{}]....", port);
 
         let seq = MemorySequencer::new();
 
-        let dir = Server::new(port, mdir,
-                              volumeSizeLimitMB,
+        let dir = Server::new(ip, port, mdir,
+                              volume_size_limit_mb,
                               pluse,
-                              replicaPlacement,
-                              garbageThreshold,
+                              replica_placement,
+                              garbage_threshold,
                               seq);
-        dir.serve();
+        dir.serve(ip_bind);
 
     }
 
-    if let Some(matches) = matches.subcommand_matches("volumn") {
+    if let Some(_matches) = matches.subcommand_matches("volumn") {
         println!("starting volumn server....");
 
     }

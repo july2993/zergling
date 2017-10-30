@@ -4,6 +4,9 @@ use std::convert::From;
 use iron::IronError;
 use iron::status;
 use serde_json;
+use url;
+use storage;
+use std;
 
 
 
@@ -14,8 +17,8 @@ quick_error! {
         GetOptionErr(t: String) {
             display("parse {} error", t)
         }
-        NoFreeSpace {
-            display("No free volume left")
+        NoFreeSpace(t: String) {
+            display("no free space: {}", t)
         }
         NoWritableVolume(msg: String) {
             display("No more writable volume: {}", msg)
@@ -32,6 +35,24 @@ quick_error! {
             display("{:?}", s)
         }
         SerdeJson(err: serde_json::Error) {
+            from()
+            cause(err)
+            description(err.description())
+            display("{:?}", err)
+        }
+        UrlParseError(err: url::ParseError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("{:?}", err)
+        }
+        StorageError(err: storage::Error) {
+            from()
+            cause(err)
+            description(err.description())
+            display("{:?}", err)
+        }
+        ParseIntError(err: std::num::ParseIntError) {
             from()
             cause(err)
             description(err.description())

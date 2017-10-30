@@ -1,6 +1,7 @@
-use std::fmt::Write;
 use std::collections::HashMap;
 use std::ops::Add;
+use std::sync::Arc;
+use std::cell::RefCell;
 
 
 use super::{VolumeLayout, DataNode};
@@ -9,17 +10,17 @@ use storage::{ReplicaPlacement, TTL, VolumeId};
 #[derive(Debug)]
 pub struct Collection {
     pub name: String,
-    pub volumeSizeLimit: u64,
+    pub volume_size_limit: u64,
     pub type2layout: HashMap<String, VolumeLayout>,
 }
 
 
 
 impl Collection {
-    pub fn new(name: &str, volumeSizeLimit: u64) -> Collection {
+    pub fn new(name: &str, volume_size_limit: u64) -> Collection {
         Collection {
             name: String::from(name),
-            volumeSizeLimit: volumeSizeLimit,
+            volume_size_limit: volume_size_limit,
             type2layout: HashMap::new(),
         }
     }
@@ -32,7 +33,7 @@ impl Collection {
             key = key.add(&ttl.unwrap().string());
         }
 
-        let vsize = self.volumeSizeLimit;
+        let vsize = self.volume_size_limit;
 
         self.type2layout
             .entry(key)
@@ -40,8 +41,14 @@ impl Collection {
 
     }
 
-    pub fn lookup(&self, vid: VolumeId) -> Option<Vec<DataNode>> {
-        panic!("todo");
+    pub fn lookup(&self, vid: VolumeId) -> Option<Vec<Arc<RefCell<DataNode>>>> {
+        for (_, layout) in &self.type2layout {
+            let ret = layout.lookup(vid);
+            if ret.is_some() {
+                return ret;
+            }
+        }
+
         None
     }
 }

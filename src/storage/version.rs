@@ -4,5 +4,5 @@
 pub type Version = u8;
 
 
-const Version2: Version = 2;
-pub const CurrentVersion: Version = Version2;
+const VERSION2: Version = 2;
+pub const CURRENT_VERSION: Version = VERSION2;
