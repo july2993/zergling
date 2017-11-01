@@ -28,6 +28,10 @@ url = "1.5"
 env_logger = "0.4"
 chrono = "0.4"
 byteorder = "1.1"
+time = "0.1"
+crc = "1.5"
+
+
 
 clippy = {version = "*", optional = true}
 

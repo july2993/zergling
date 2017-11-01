@@ -127,6 +127,18 @@ impl TTL {
         s
     }
 
+    pub fn minutes(&self)  -> u32 {
+        match self.unit {
+            Unit::Empty => 0,
+            Unit::Minute => self.count as u32,
+            Unit::Hour => self.count as u32 * 60,
+            Unit::Day => self.count as u32 * 60 * 24,
+            Unit::Week => self.count as u32 * 60 * 24 * 7,
+            Unit::Month => self.count as u32 * 60 * 24 * 31,
+            Unit::Year => self.count as u32 * 60 * 24 * 365,
+        }
+    }
+
 }
 
 impl From<u32> for TTL {

@@ -14,6 +14,7 @@ use hyper::server::{Request, Response, Service};
 use hyper::{Method};
 use url::Url;
 use operation::ClusterStatusResult;
+use util;
 
 
 
@@ -113,14 +114,7 @@ fn map_err(r: Result<Response>) -> std::result::Result<Response, hyper::Error> {
 
 
 fn get_params(req: &Request) -> Result<HashMap<String, String>> {
-    // need base or will parse err
-    let s = format!("http://127.0.0.1{}", req.uri());
-
-    debug!("url: {:?}", s);
-
-    let url = Url::parse(&s)?;
-    let pairs = url.query_pairs().into_owned();
-    Ok(pairs.collect())
+    return util::get_request_params(req);
 }
 
 pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {

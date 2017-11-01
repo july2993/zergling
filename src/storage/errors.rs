@@ -1,6 +1,6 @@
 use std::result;
-
-
+use std::error;
+use std;
 
 
 quick_error! {
@@ -11,6 +11,18 @@ quick_error! {
         }
         ParseTTL(t: String) {
             display("parse {} error", t)
+        }
+        IO(err: std::io::Error) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
+        }
+        Other(err: Box<error::Error + Sync + Send>) {
+             from()
+             cause(err.as_ref())
+             description(err.description())
+             display("{:?}", err)
         }
     }
 }

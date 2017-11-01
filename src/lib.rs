@@ -1,3 +1,8 @@
+
+// #![crate_type = "lib"]
+// #![cfg_attr(test, feature(test))]
+#![feature(fnbox)]
+
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
@@ -21,12 +26,15 @@ extern crate hyper;
 extern crate tokio_core;
 extern crate url;
 extern crate byteorder;
+extern crate time;
+extern crate crc;
 
 
 
 
 
 pub mod directory;
+#[macro_use]
 pub mod util;
 pub mod pb;
 pub mod storage;
