@@ -26,7 +26,6 @@
 /// assert_eq!(count_args!(1, 2, 3), 3);
 /// # }
 /// ```
-
 #[macro_export]
 macro_rules! count_args {
     () => { 0 };

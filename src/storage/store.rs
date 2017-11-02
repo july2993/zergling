@@ -1,7 +1,8 @@
 
 use storage;
 use storage::needle;
-use storage::{DiskLocation, VolumeId, Needle, Result, Volume, Error};
+use storage::{DiskLocation, VolumeId, Needle, Result, Volume, Error, NeedleMapType,
+              ReplicaPlacement, TTL};
 use pb;
 
 
@@ -22,7 +23,14 @@ pub struct Store {
 
 
 impl Store {
-    pub fn new(ip: &str, port: u16, public_url: &str, folders: Vec<String>, max_counts: Vec<i64>, needle_map_kind: storage::NeedleMapType) -> Store {
+    pub fn new(
+        ip: &str,
+        port: u16,
+        public_url: &str,
+        folders: Vec<String>,
+        max_counts: Vec<i64>,
+        needle_map_kind: storage::NeedleMapType,
+    ) -> Store {
 
         let mut locations = vec![];
         for i in 0..folders.len() {
@@ -74,7 +82,7 @@ impl Store {
 
         Ok(0)
     }
-    
+
     pub fn read_volume_needle(&mut self, vid: VolumeId, n: &mut Needle) -> Result<u32> {
         if let Some(v) = self.find_volume_mut(vid) {
             return v.read_needle(n);
@@ -92,9 +100,9 @@ impl Store {
             // if v.content_size() > needle::MAX_POSSIBLE_VOLUME_SIZE {
             if false {
                 return Err(box_err!("volume {} is read only", vid));
-            } 
+            }
 
-            return v.write_needle(n);            
+            return v.write_needle(n);
 
         } else {
             return Err((box_err!("volume {} not fount", vid)));
@@ -120,10 +128,95 @@ impl Store {
         panic!("TODO");
     }
 
-    pub fn add_volume() {
-        panic!("TODO");
+    fn find_free_location(&mut self) -> Option<&mut DiskLocation> {
+        let mut rt = None;
+        let mut max_free: i64 = 0;
+        for location in self.locations.iter_mut() {
+            let free = location.max_volume_count - location.volumes.len() as i64;
+            if free > max_free {
+                max_free = free;
+                rt = Some(location);
+            }
+        }
+
+        rt
+    }
+
+    fn do_add_volume(
+        &mut self,
+        vid: VolumeId,
+        collection: &str,
+        needle_map_kind: NeedleMapType,
+        replica_placement: ReplicaPlacement,
+        ttl: TTL,
+        pre_allocate: i64,
+    ) -> Result<()> {
+        if self.find_volume(vid).is_some() {
+            return Err(box_err!("volume id {} already exists!", vid));
+        }
+
+        let location = self.find_free_location().ok_or::<Error>(
+            box_err!("no more free space left"),
+        )?;
+        let volume = Volume::new(
+            &location.directory,
+            collection,
+            vid,
+            needle_map_kind,
+            replica_placement,
+            ttl,
+            pre_allocate,
+        )?;
+
+        location.volumes.insert(vid, volume);
+
+        Ok(())
     }
 
 
-}
 
+    pub fn add_volume(
+        &mut self,
+        volume_list: &str,
+        collection: &str,
+        needle_map_kind: NeedleMapType,
+        replica_placement: &str,
+        ttl_str: &str,
+        pre_allocate: i64,
+    ) -> Result<()> {
+
+        let rp = ReplicaPlacement::new(replica_placement)?;
+        let ttl = TTL::new(ttl_str)?;
+
+        for range_str in volume_list.split(",") {
+            let parts: Vec<&str> = range_str.split("-").collect();
+            if parts.len() == 1 {
+                let id_str = parts[0];
+                let vid = id_str.parse::<u32>()?;
+                self.do_add_volume(
+                    vid,
+                    collection,
+                    needle_map_kind,
+                    rp,
+                    ttl,
+                    pre_allocate,
+                )?;
+            } else {
+                let start = parts[0].parse::<u32>()?;
+                let end = parts[1].parse::<u32>()?;
+
+                for id in start..(end + 1) {
+                    self.do_add_volume(
+                        id,
+                        collection,
+                        needle_map_kind,
+                        rp,
+                        ttl,
+                        pre_allocate,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+}

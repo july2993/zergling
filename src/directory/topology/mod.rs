@@ -17,11 +17,11 @@ pub use self::collection::Collection;
 pub use self::volume_layout::VolumeLayout;
 pub use self::volume_grow::{VolumeGrow, VolumeGrowOption};
 
-pub use storage::{ReplicaPlacement,TTL, VolumeId, VolumeInfo};
+pub use storage::{ReplicaPlacement, TTL, VolumeId, VolumeInfo};
 
 
 
-#[derive(Debug,Default,Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct DataNode {
     pub id: String,
     pub ip: String,
@@ -44,19 +44,19 @@ impl fmt::Display for DataNode {
 
 
 impl DataNode {
-	pub fn new(id: &str, ip: &str, port: i64, public_url: &str, max_volumes: i64) -> DataNode {
-		DataNode {
-			id: String::from(id),
-			ip: String::from(ip),
-			port: port,
-			public_url: String::from(public_url),
-			last_seen: 0,
-			rack: Weak::default(),
-			volumes: HashMap::new(),
-			max_volumes: max_volumes,
+    pub fn new(id: &str, ip: &str, port: i64, public_url: &str, max_volumes: i64) -> DataNode {
+        DataNode {
+            id: String::from(id),
+            ip: String::from(ip),
+            port: port,
+            public_url: String::from(public_url),
+            last_seen: 0,
+            rack: Weak::default(),
+            volumes: HashMap::new(),
+            max_volumes: max_volumes,
             max_volume_id: 0,
-		}
-	}
+        }
+    }
 
     pub fn url(&self) -> String {
         format!("{}:{}", self.ip, self.port)
@@ -97,7 +97,7 @@ impl DataNode {
     }
 
     pub fn get_data_center_id(&self) -> String {
-        match  self.rack.upgrade() {
+        match self.rack.upgrade() {
             Some(rack) => return rack.borrow().get_data_center_id(),
             None => String::from(""),
         }
@@ -115,7 +115,7 @@ impl DataNode {
 
         for (id, has) in self.volumes.iter_mut() {
             match infos_map.get(&id) {
-                Some(_) => {},
+                Some(_) => {}
                 None => deleted_id.push(has.id),
             }
         }
@@ -139,7 +139,6 @@ pub struct Rack {
     pub max_volume_id: VolumeId,
 
     pub data_center: Weak<RefCell<DataCenter>>,
-	
 }
 
 impl Rack {
@@ -162,12 +161,27 @@ impl Rack {
         }
     }
 
-	pub fn get_or_create_data_node(&mut self, id: &str, ip: &str, port: i64, public_url: &str, max_volumes: i64) -> Arc<RefCell<DataNode>> {
-		let node = self.nodes
-			.entry(String::from(id))
-			.or_insert(Arc::new(RefCell::new(DataNode::new(id, ip, port, public_url, max_volumes,))));
+    pub fn get_or_create_data_node(
+        &mut self,
+        id: &str,
+        ip: &str,
+        port: i64,
+        public_url: &str,
+        max_volumes: i64,
+    ) -> Arc<RefCell<DataNode>> {
+        let node = self.nodes.entry(String::from(id)).or_insert(
+            Arc::new(RefCell::new(
+                DataNode::new(
+                    id,
+                    ip,
+                    port,
+                    public_url,
+                    max_volumes,
+                ),
+            )),
+        );
         node.clone()
-	}
+    }
 
     pub fn get_data_center_id(&self) -> String {
         match self.data_center.upgrade() {
@@ -204,7 +218,7 @@ impl Rack {
         // randomly select
         let mut free_volumes = 0;
         for (_, node) in self.nodes.iter() {
-            free_volumes += node.borrow().free_volumes();         
+            free_volumes += node.borrow().free_volumes();
         }
 
         let idx = random::<u32>() as i64 % free_volumes;
@@ -212,11 +226,13 @@ impl Rack {
         for (_, node) in self.nodes.iter() {
             free_volumes -= node.borrow().free_volumes();
             if free_volumes == idx {
-                return Ok(node.clone())
+                return Ok(node.clone());
             }
         }
 
-        return  Err(Error::NoFreeSpace(format!("reserve_one_volume on rack {} fail", self.id)));
+        return Err(Error::NoFreeSpace(
+            format!("reserve_one_volume on rack {} fail", self.id),
+        ));
     }
 }
 
@@ -244,11 +260,11 @@ impl DataCenter {
     }
 
     pub fn get_or_create_rack(&mut self, id: &str) -> Arc<RefCell<Rack>> {
-		self.racks
-			.entry(String::from(id))
-			.or_insert(Arc::new(RefCell::new(Rack::new(id))))
+        self.racks
+            .entry(String::from(id))
+            .or_insert(Arc::new(RefCell::new(Rack::new(id))))
             .clone()
-	}
+    }
 
     pub fn has_volumes(&self) -> i64 {
         let mut ret = 0;
@@ -275,7 +291,7 @@ impl DataCenter {
     }
 
     pub fn reserve_one_volume(&self) -> Result<Arc<RefCell<DataNode>>> {
-        // randomly select one 
+        // randomly select one
         let mut free_volumes = 0;
         for (_, rack) in self.racks.iter() {
             free_volumes += rack.borrow().free_volumes();
@@ -290,8 +306,8 @@ impl DataCenter {
             }
         }
 
-        Err(Error::NoFreeSpace(String::from(format!("reserve_one_volume on dc {} fail", self.id))))
+        Err(Error::NoFreeSpace(String::from(
+            format!("reserve_one_volume on dc {} fail", self.id),
+        )))
     }
 }
-
-

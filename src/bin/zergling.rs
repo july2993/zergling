@@ -27,17 +27,20 @@ use zergling::directory::sequencer::MemorySequencer;
 
 
 fn main() {
-	LogBuilder::new()
+    LogBuilder::new()
         .format(|record| {
-                    format!("{} [{}:{}] - {} {}",
-                            Local::now().format("%Y-%m-%dT%H:%M:%S"),
-                            record.location().file().rsplit('/').nth(0).unwrap(),
-                            record.location().line(),
-                            record.level(),
-                            record.args())
-                })
+            format!(
+                "{} [{}:{}] - {} {}",
+                Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.location().file().rsplit('/').nth(0).unwrap(),
+                record.location().line(),
+                record.level(),
+                record.args()
+            )
+        })
         .parse(&env::var("ZERGLING_LOG").unwrap_or_default())
-        .init().unwrap();
+        .init()
+        .unwrap();
 
     // #[warn(unused_must_use)]
     // env_logger::init();
@@ -49,38 +52,25 @@ fn main() {
     error!("this is printed by default");
 
     let matches = App::new("zergling")
-        .arg(
-            Arg::with_name("ip")
-            .long("ip")
-            .takes_value(true)
-            .help("ip address default localhost")
-            )
+        .arg(Arg::with_name("ip").long("ip").takes_value(true).help(
+            "ip address default localhost",
+        ))
         .arg(
             Arg::with_name("ip.bind")
-            .long("ip.bind")
-            .takes_value(true)
-            .help("default 0.0.0.0")
-            )
-        .arg(
-            Arg::with_name("port")
-            .long("port")
-            .takes_value(true)
-            )
-        .arg(
-            Arg::with_name("mdir")
-            .long("mdir")
-            .takes_value(true)
-            )
-        .subcommand(SubCommand::with_name("master")
-                    .about("master server"))
-        .subcommand(SubCommand::with_name("volumn")
-                    .about("volumn server"))
+                .long("ip.bind")
+                .takes_value(true)
+                .help("default 0.0.0.0"),
+        )
+        .arg(Arg::with_name("port").long("port").takes_value(true))
+        .arg(Arg::with_name("mdir").long("mdir").takes_value(true))
+        .subcommand(SubCommand::with_name("master").about("master server"))
+        .subcommand(SubCommand::with_name("volumn").about("volumn server"))
         .get_matches();
 
     let mut ip = "localhost";
     let mut ip_bind = "0.0.0.0";
     let mut port = 9333;
-    let mut volume_size_limit_mb = 30*1000;
+    let mut volume_size_limit_mb = 30 * 1000;
     let mut replica_placement = storage::ReplicaPlacement::new("000").unwrap();
     let mut pluse = 5;
     let mut garbage_threshold = 0.3;
@@ -107,12 +97,16 @@ fn main() {
 
         let seq = MemorySequencer::new();
 
-        let dir = Server::new(ip, port, mdir,
-                              volume_size_limit_mb,
-                              pluse,
-                              replica_placement,
-                              garbage_threshold,
-                              seq);
+        let dir = Server::new(
+            ip,
+            port,
+            mdir,
+            volume_size_limit_mb,
+            pluse,
+            replica_placement,
+            garbage_threshold,
+            seq,
+        );
         dir.serve(ip_bind);
 
     }
@@ -124,4 +118,3 @@ fn main() {
 
 
 }
-

@@ -9,9 +9,7 @@ pub struct MemorySequencer {
 
 impl MemorySequencer {
     pub fn new() -> MemorySequencer {
-       MemorySequencer {
-           counter: Arc::new(Mutex::new(1)),
-       } 
+        MemorySequencer { counter: Arc::new(Mutex::new(1)) }
     }
 }
 
@@ -33,7 +31,7 @@ impl Sequencer for MemorySequencer {
 
     fn peek(&self) -> u64 {
         let counter = self.counter.lock().unwrap();
-        
+
         *counter
     }
 }

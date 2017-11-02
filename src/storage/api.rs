@@ -3,12 +3,15 @@ use futures::future;
 use futures::future::Future;
 use futures::sync::oneshot;
 use hyper::header::ContentLength;
+use hyper::StatusCode;
 use hyper::server::{Request, Response, Service};
 use url::Url;
+use super::{Store, NeedleMapType};
 use std;
 use std::error::Error;
 use storage::Result;
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
@@ -18,18 +21,20 @@ const PHRASE: &'static str = "Hello, World!";
 pub type APICallback = Box<FnBox(Result<Response>) + Send>;
 
 pub enum Msg {
-    API {req: Request, cb: APICallback}
+    API { req: Request, cb: APICallback },
 }
 
 fn make_callback() -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Result<Response>>) {
     let (tx, rx) = oneshot::channel();
-    let callback = move |resp| {tx.send(resp).unwrap(); };
+    let callback = move |resp| { tx.send(resp).unwrap(); };
     (Box::new(callback), rx)
 }
 
 #[derive(Clone)]
 pub struct Context {
     pub sender: Arc<Sender<Msg>>,
+    pub store: Arc<Mutex<Store>>,
+    pub needle_map_kind: NeedleMapType,
 }
 
 impl Context {
@@ -43,7 +48,7 @@ impl Context {
 
     fn handle_msg(&mut self, msg: Msg) {
         match msg {
-            Msg::API {req, cb} => {
+            Msg::API { req, cb } => {
                 match (req.method(), req.path()) {
                     (method, path) => {
                         let handle = test_handler(&req);
@@ -54,7 +59,6 @@ impl Context {
         }
 
     }
-
 }
 
 
@@ -63,40 +67,67 @@ impl Service for Context {
     type Response = Response;
     type Error = hyper::Error;
 
-    type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
+    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Request) -> Self::Future {
         let (cb, future) = make_callback();
-        self.sender.send(Msg::API{req, cb}).unwrap();
+        self.sender.send(Msg::API { req, cb }).unwrap();
 
-        let future = future.map_err( |err| {
-            // TODO more specify error?
-            hyper::Error::Timeout
-        })
-        .map(|v| {
-            match v {
+        let future = future
+            .map_err(|err| {
+                // TODO more specify error?
+                hyper::Error::Timeout
+            })
+            .map(|v| match v {
                 Ok(resp) => resp,
                 Err(err) => {
                     debug!("err: {:?}", err);
-                    let s = format!("{{\"Error\": {}}}", err.description());    
+                    let s = format!("{{\"Error\": {}}}", err.description());
                     Response::new()
-                            .with_header(ContentLength(s.len() as u64))
-                            .with_body(s)
+                        .with_header(ContentLength(s.len() as u64))
+                        .with_body(s)
                 }
-            }
-        });
+            });
         Box::new(future)
     }
 }
 
 pub fn test_handler(_req: &Request) -> Result<Response> {
-    Ok(Response::new()
-        .with_header(ContentLength(PHRASE.len() as u64))
-        .with_body(PHRASE))
+    Ok(
+        Response::new()
+            .with_header(ContentLength(PHRASE.len() as u64))
+            .with_body(PHRASE),
+    )
 }
 
-pub fn assign_volume_handler(req: &Request) -> Result<Response> {
+pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     let params = util::get_request_params(req);
+
+
+    let pre_allocate = params
+        .get("preallocate")
+        .unwrap_or(&String::from("0"))
+        .parse::<i64>()
+        .unwrap_or_default();
+
+    let mut store = ctx.store.lock().unwrap();
+    store.add_volume(
+        params.get("volume").unwrap_or(&String::from("")),
+        params.get("collection").unwrap_or(&String::from("")),
+        ctx.needle_map_kind,
+        params.get("replication").unwrap_or(&String::from("")),
+        params.get("ttl").unwrap_or(&String::from("")),
+        pre_allocate,
+    )?;
+
+
+    let mut resp = Response::new()
+        .with_header(ContentLength(PHRASE.len() as u64))
+        .with_body(PHRASE);
+
+    resp.set_status(StatusCode::Accepted);
+
+    Ok(resp)
 }
 
 
@@ -105,14 +136,14 @@ pub fn assign_volume_handler(req: &Request) -> Result<Response> {
 // }
 
 
- // support following format
- // http://localhost:8080/3/01637037d6/my_preferred_name.jpg
- // http://localhost:8080/3/01637037d6.jpg
- // http://localhost:8080/3,01637037d6.jpg
- // http://localhost:8080/3/01637037d6
- // http://localhost:8080/3,01637037d6
- // @return vid, fid, filename, ext, is_volume_id_only
-fn parse_url_path(path: &str) -> (String,  String,  String, String, bool) {
+// support following format
+// http://localhost:8080/3/01637037d6/my_preferred_name.jpg
+// http://localhost:8080/3/01637037d6.jpg
+// http://localhost:8080/3,01637037d6.jpg
+// http://localhost:8080/3/01637037d6
+// http://localhost:8080/3,01637037d6
+// @return vid, fid, filename, ext, is_volume_id_only
+fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
     let mut vid: String;
     let mut fid: String;
     let mut filename: String;
@@ -125,9 +156,13 @@ fn parse_url_path(path: &str) -> (String,  String,  String, String, bool) {
             vid = parts[1].to_string();
             fid = parts[2].to_string();
             filename = parts[3].to_string();
-            
+
             // must be valid utf8
-            ext = Path::new(&filename).extension().unwrap_or_default().to_string_lossy().to_string();
+            ext = Path::new(&filename)
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
         }
         2 => {
             filename = String::default();
@@ -151,7 +186,7 @@ fn parse_url_path(path: &str) -> (String,  String,  String, String, bool) {
                 ext = path[start..].to_string();
                 end = start - 1;
             }
-            
+
             if sep.is_some() {
                 let start = sep.unwrap() + 1;
                 fid = path[start..end].to_string();
@@ -163,7 +198,7 @@ fn parse_url_path(path: &str) -> (String,  String,  String, String, bool) {
 
             vid = path[1..end].to_string();
         }
-        
+
     };
 
     (vid, fid, filename, ext, is_volume_id_only)

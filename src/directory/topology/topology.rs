@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::cell::RefCell;
 
 use super::{DataCenter, DataNode, Collection, VolumeLayout, VolumeGrowOption};
-use directory::{Result};
+use directory::Result;
 use storage;
-use storage::{VolumeId};
+use storage::VolumeId;
 use rand;
 
 
@@ -20,7 +20,6 @@ pub struct Topology {
     pub pulse: u64,
 
     pub volume_size_limit: u64,
-
 
     pub data_centers: HashMap<String, Arc<RefCell<DataCenter>>>,
 }
@@ -38,19 +37,20 @@ impl Topology {
         }
     }
 
-    // pub fn randomly_pick_nodes(number_of_nodes: u64, filter: Fn(&DataNode) -> bool) -> Result<Arc<RefCell<DataNode>>>, Vec<Arc<RefCell<DataNode>>> {
-    //     panic!("todo");
-    // }
 
 
-    pub fn get_or_create_data_center(&mut self, name: &str) ->  Arc<RefCell<DataCenter>> {
+    pub fn get_or_create_data_center(&mut self, name: &str) -> Arc<RefCell<DataCenter>> {
         self.data_centers
             .entry(String::from(name))
-            .or_insert( Arc::new(RefCell::new(DataCenter::new(name))))
+            .or_insert(Arc::new(RefCell::new(DataCenter::new(name))))
             .clone()
     }
 
-    pub fn lookup(&mut self, collection: String, vid: VolumeId) -> Option<Vec<Arc<RefCell<DataNode>>>> {
+    pub fn lookup(
+        &mut self,
+        collection: String,
+        vid: VolumeId,
+    ) -> Option<Vec<Arc<RefCell<DataNode>>>> {
         if collection.is_empty() {
             for (_name, c) in &self.collection_map {
                 let rt = c.lookup(vid);
@@ -65,7 +65,7 @@ impl Topology {
                     if rt.is_some() {
                         return rt;
                     }
-                },
+                }
                 None => (),
             };
         }
@@ -73,7 +73,12 @@ impl Topology {
         None
     }
 
-    fn get_volume_layout(&mut self, collection: &str, rp: storage::ReplicaPlacement, ttl: storage::TTL) -> &mut VolumeLayout {
+    fn get_volume_layout(
+        &mut self,
+        collection: &str,
+        rp: storage::ReplicaPlacement,
+        ttl: storage::TTL,
+    ) -> &mut VolumeLayout {
         self.collection_map
             .entry(String::from(collection))
             .or_insert(Collection::new(collection, self.volume_size_limit))
@@ -98,11 +103,16 @@ impl Topology {
     }
 
     //@return (file_id, count, datanode)
-    pub fn pick_for_write(&mut self, count: u64, option: &VolumeGrowOption) -> Result<(String, u64, Arc<RefCell<DataNode>>)> {
+    pub fn pick_for_write(
+        &mut self,
+        count: u64,
+        option: &VolumeGrowOption,
+    ) -> Result<(String, u64, Arc<RefCell<DataNode>>)> {
 
         let ret: (VolumeId, Vec<Arc<RefCell<DataNode>>>);
         {
-            let layout = self.get_volume_layout(&option.collection, option.replica_placement, option.ttl);
+            let layout =
+                self.get_volume_layout(&option.collection, option.replica_placement, option.ttl);
             ret = layout.pick_for_write(&option)?;
         }
 
@@ -123,7 +133,11 @@ impl Topology {
             .register_volume(&vi, dn);
     }
 
-    pub fn un_register_volume_layout(&mut self, vi: storage::VolumeInfo, dn: Arc<RefCell<DataNode>>) {
+    pub fn un_register_volume_layout(
+        &mut self,
+        vi: storage::VolumeInfo,
+        dn: Arc<RefCell<DataNode>>,
+    ) {
         self.get_volume_layout(&vi.collection, vi.replica_placement, vi.ttl)
             .un_register_volume(&vi, dn);
     }
@@ -145,5 +159,4 @@ impl Topology {
 
         vid + 1
     }
-
 }

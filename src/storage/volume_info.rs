@@ -21,7 +21,7 @@ pub struct VolumeInfo {
 
 impl VolumeInfo {
     pub fn new(m: &pb::zergling::VolumeInformationMessage) -> Result<VolumeInfo> {
-        let rp =  ReplicaPlacement::from_u8(m.replica_placement as u8)?;
+        let rp = ReplicaPlacement::from_u8(m.replica_placement as u8)?;
         Ok(VolumeInfo {
             id: m.id as VolumeId,
             size: m.size,

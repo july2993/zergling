@@ -1,5 +1,5 @@
 
-use super::{Result};
+use super::Result;
 use std::fmt::Write;
 use storage::errors::Error::ParseReplicaPlacement;
 
@@ -26,7 +26,7 @@ impl ReplicaPlacement {
 
         let rp = ReplicaPlacement {
             same_rack_count: bytes[0] - '0' as u8,
-            diff_rack_count: bytes[1] - '0' as u8, 
+            diff_rack_count: bytes[1] - '0' as u8,
             diff_data_center_count: bytes[1] - '0' as u8,
         };
 
@@ -36,7 +36,13 @@ impl ReplicaPlacement {
     pub fn string(&self) -> String {
         let mut s = String::new();
         // should never fail
-        write!(s, "{}{}{}", self.diff_data_center_count, self.diff_rack_count, self.same_rack_count).unwrap();
+        write!(
+            s,
+            "{}{}{}",
+            self.diff_data_center_count,
+            self.diff_rack_count,
+            self.same_rack_count
+        ).unwrap();
 
         s
     }

@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use storage::{VolumeId, ReplicaPlacement, TTL};
 use directory::topology::{DataNode, VolumeGrowOption, VolumeInfo};
 
-use directory::errors::{Result,Error};
+use directory::errors::{Result, Error};
 use storage;
 
 
@@ -23,7 +23,7 @@ pub struct VolumeLayout {
     pub readonly_volumes: HashSet<VolumeId>,
     pub oversize_volumes: HashSet<VolumeId>,
 
-    pub vid2location: HashMap<VolumeId, Vec<Arc<RefCell<DataNode>>>>
+    pub vid2location: HashMap<VolumeId, Vec<Arc<RefCell<DataNode>>>>,
 }
 
 impl VolumeLayout {
@@ -49,9 +49,9 @@ impl VolumeLayout {
         for vid in &self.writable_volumes {
             for node in self.vid2location.get(vid).unwrap_or(&vec![]) {
                 let bnode = node.borrow();
-                if bnode.id == option.data_node 
-                && bnode.get_rack_id() == option.rack 
-                && bnode.get_data_center_id() == option.data_center {
+                if bnode.id == option.data_node && bnode.get_rack_id() == option.rack &&
+                    bnode.get_data_center_id() == option.data_center
+                {
                     count += 1;
                 }
             }
@@ -60,7 +60,10 @@ impl VolumeLayout {
         count
     }
 
-    pub fn pick_for_write(&self, option: &VolumeGrowOption) -> Result<(VolumeId, Vec<Arc<RefCell<DataNode>>>)> {
+    pub fn pick_for_write(
+        &self,
+        option: &VolumeGrowOption,
+    ) -> Result<(VolumeId, Vec<Arc<RefCell<DataNode>>>)> {
         if self.writable_volumes.len() <= 0 {
             return Err(Error::NoWritableVolume(String::from("no writable volumes")));
         }
@@ -74,12 +77,14 @@ impl VolumeLayout {
                 Some(location) => {
                     for node in location {
                         let dn = node.borrow();
-                        if option.data_center != "" && option.data_center != dn.get_data_center_id()
-                            || option.rack != "" && option.rack != dn.get_rack_id()
-                            || option.data_node != "" && option.data_node != dn.id {
-                                continue
-                            }
-                        
+                        if option.data_center != "" &&
+                            option.data_center != dn.get_data_center_id() ||
+                            option.rack != "" && option.rack != dn.get_rack_id() ||
+                            option.data_node != "" && option.data_node != dn.id
+                        {
+                            continue;
+                        }
+
                         counter += 1;
                         if rand::random::<i64>() % counter < 1 {
                             let mut lo = vec![];
@@ -109,7 +114,7 @@ impl VolumeLayout {
             let nd_ref = nd.borrow();
             if e_ref.ip != nd_ref.ip || e_ref.port != nd_ref.port {
                 i += 1;
-                continue
+                continue;
             }
 
             same = Some(i);
@@ -124,36 +129,35 @@ impl VolumeLayout {
 
     pub fn register_volume(&mut self, v: &VolumeInfo, dn: Arc<RefCell<DataNode>>) {
         {
-            let list = self.vid2location.entry(v.id) 
-                .or_insert(vec![]);
+            let list = self.vid2location.entry(v.id).or_insert(vec![]);
             VolumeLayout::set_node(list, dn.clone());
         }
 
-       let list = self.vid2location.get(&v.id).unwrap().clone();
+        let list = self.vid2location.get(&v.id).unwrap().clone();
 
-       for node in list.iter() {
-           match node.borrow().volumes.get(&v.id) {
-               Some(v) => {
+        for node in list.iter() {
+            match node.borrow().volumes.get(&v.id) {
+                Some(v) => {
                     if v.read_only {
                         self.remove_from_writable(v.id);
                         self.readonly_volumes.insert(v.id);
                     }
-               },
-               None => {
-                   self.remove_from_writable(v.id);
-                   self.readonly_volumes.remove(&v.id);
-               }
-           }
-       }
+                }
+                None => {
+                    self.remove_from_writable(v.id);
+                    self.readonly_volumes.remove(&v.id);
+                }
+            }
+        }
 
-       if list.len() == self.rp.get_copy_count() as usize && self.is_writable(v) {
+        if list.len() == self.rp.get_copy_count() as usize && self.is_writable(v) {
             if self.oversize_volumes.get(&v.id).is_none() {
                 self.add_to_writable(v.id);
             }
-       } else {
+        } else {
             self.remove_from_writable(v.id);
             self.set_oversized_if_need(v);
-       }
+        }
 
     }
 
@@ -164,13 +168,11 @@ impl VolumeLayout {
     }
 
     fn is_oversized(&self, v: &VolumeInfo) -> bool {
-        return v.size >= self.volume_size_limit
+        return v.size >= self.volume_size_limit;
     }
 
     fn is_writable(&self, v: &VolumeInfo) -> bool {
-        return !self.is_oversized(v) &&
-            v.version == storage::CURRENT_VERSION &&
-            !v.read_only
+        return !self.is_oversized(v) && v.version == storage::CURRENT_VERSION && !v.read_only;
     }
 
     fn add_to_writable(&mut self, vid: VolumeId) {
@@ -210,4 +212,3 @@ impl VolumeLayout {
         }
     }
 }
-

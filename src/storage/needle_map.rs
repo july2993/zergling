@@ -7,9 +7,9 @@ use storage::{NeedleValueMap, NeedleValue};
 #[derive(Copy, Clone)]
 pub enum NeedleMapType {
     NeedleMapInMemory = 0,
-    NeedleMapLevelDb = 1,
-    NeedleMapBoltDb = 2,
-    NeedleMapBtree = 3,
+    // NeedleMapLevelDb = 1,
+    // NeedleMapBoltDb = 2,
+    // NeedleMapBtree = 3,
 }
 
 impl Default for NeedleMapType {
@@ -24,7 +24,7 @@ pub struct NeedleMapper {
     nvp: Box<NeedleValueMap>,
 }
 
-impl  NeedleMapper {
+impl NeedleMapper {
     pub fn set(&mut self, key: u64, needle_value: NeedleValue) -> Option<NeedleValue> {
         self.nvp.set(key, needle_value)
     }
@@ -47,4 +47,3 @@ pub struct BaseNeedleMapper {
     file_byte_counter: u64,
     maximum_file_key: u64,
 }
-

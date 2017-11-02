@@ -6,7 +6,7 @@ use std::fs::File;
 use super::Version;
 use super::ReplicaPlacement;
 use super::TTL;
-use super::{VolumeId, Result, Error, Needle, NeedleMapper, NeedleValueMap};
+use super::{VolumeId, Result, Error, Needle, NeedleMapper, NeedleValueMap, NeedleMapType};
 
 use super::needle::TOMBSTONE_FILE_SIZE;
 use super::needle;
@@ -14,7 +14,7 @@ use time;
 
 
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SuperBlock {
     pub version: Version,
     pub replica_placement: ReplicaPlacement,
@@ -29,7 +29,8 @@ pub struct Volume {
     pub collection: String,
     pub data_file: File,
     pub nm: NeedleMapper,
-    
+    pub needle_map_kind: NeedleMapType,
+
     pub read_only: bool,
 
     pub file: File,
@@ -44,6 +45,36 @@ pub struct Volume {
 
 
 impl Volume {
+    pub fn new(
+        dir: &str,
+        collection: &str,
+        id: VolumeId,
+        needle_map_kind: NeedleMapType,
+        replica_placement: ReplicaPlacement,
+        ttl: TTL,
+        pre_allocate: i64,
+    ) -> Result<Volume> {
+
+        let sb = SuperBlock {
+            replica_placement: replica_placement,
+            ttl: ttl,
+            ..Default::default()
+        };
+
+        Err(box_err!("todo"))
+        // let mut v = Volume {
+        //     dir: dir.to_string(),
+        //     collection: collection.to_string(),
+        //     id: id,
+        //     super_block: sb,
+        //     needle_map_kind: needle_map_kind,
+        // };
+
+        // v.load()?;
+        // v
+    }
+
+
     pub fn write_needle(&mut self, n: &Needle) -> Result<u32> {
         panic!("TODO");
     }
@@ -54,20 +85,25 @@ impl Volume {
 
     pub fn read_needle(&mut self, n: &mut Needle) -> Result<u32> {
         let nv = self.nm.get(n.id).ok_or::<Error>(box_err!("Not Found"))?;
-        
+
         if nv.size == TOMBSTONE_FILE_SIZE {
             return Err(box_err!("Already Deleted"));
         }
-        
+
         let version = self.version();
-        n.read_date(&mut self.data_file, nv.offset, nv.size, version)?;
+        n.read_date(
+            &mut self.data_file,
+            nv.offset,
+            nv.size,
+            version,
+        )?;
 
         let nread = n.data.len();
-        
+
         if n.has_ttl() && n.has_last_modified_date() {
             let minitus = n.ttl.minutes();
             if minitus > 0 {
-                if time::get_time().sec >= (n.last_modified + minitus as u64 *60) as i64 {
+                if time::get_time().sec >= (n.last_modified + minitus as u64 * 60) as i64 {
                     return Err(box_err!("Not Found"));
                 }
             }
@@ -91,7 +127,7 @@ impl Volume {
         }
 
         rt
-        
+
     }
 
     pub fn size() -> i64 {

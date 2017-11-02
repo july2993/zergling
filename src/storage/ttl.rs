@@ -1,5 +1,5 @@
 
-use super::{Result};
+use super::Result;
 use storage::errors::Error::ParseTTL;
 use std::ops::Add;
 // use std::marker::Clone;
@@ -95,13 +95,16 @@ impl TTL {
         let mut unit = bytes[bytes.len() - 1];
         let mut count_bytes = &bytes[..bytes.len() - 1];
 
-        if unit >= '0'  as u8 && unit <= '9' as u8 {
+        if unit >= '0' as u8 && unit <= '9' as u8 {
             unit = 'm' as u8;
             count_bytes = bytes;
         }
 
 
-        if let Ok(count) = String::from_utf8(count_bytes.to_vec()).unwrap().parse::<u8>() {
+        if let Ok(count) = String::from_utf8(count_bytes.to_vec())
+            .unwrap()
+            .parse::<u8>()
+        {
             if let Some(unit) = Unit::new(unit) {
                 let ttl = TTL {
                     count: count,
@@ -127,7 +130,7 @@ impl TTL {
         s
     }
 
-    pub fn minutes(&self)  -> u32 {
+    pub fn minutes(&self) -> u32 {
         match self.unit {
             Unit::Empty => 0,
             Unit::Minute => self.count as u32,
@@ -138,7 +141,6 @@ impl TTL {
             Unit::Year => self.count as u32 * 60 * 24 * 365,
         }
     }
-
 }
 
 impl From<u32> for TTL {
@@ -159,4 +161,3 @@ impl From<Vec<u8>> for TTL {
         }
     }
 }
-

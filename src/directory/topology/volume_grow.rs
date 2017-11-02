@@ -1,5 +1,5 @@
 use directory::topology::{Topology, DataNode, VolumeInfo, DataCenter, Rack};
-use directory::{Result,Error};
+use directory::{Result, Error};
 use storage;
 use storage::VolumeId;
 use std::cell::RefCell;
@@ -14,13 +14,11 @@ use serde_json::Value;
 
 
 #[derive(Debug)]
-pub struct VolumeGrow {
-
-}
+pub struct VolumeGrow {}
 
 impl VolumeGrow {
     pub fn new() -> VolumeGrow {
-        VolumeGrow{}
+        VolumeGrow {}
     }
 
     pub fn grow_by_type(&self, option: &VolumeGrowOption, topo: &mut Topology) -> Result<i64> {
@@ -40,12 +38,16 @@ impl VolumeGrow {
     // TODO: to long func...
     // will specify data_node but no data center find a wrong data center to be the
     // main data center first, then no valid data_node ???
-    fn find_empty_slots(&self, option: &VolumeGrowOption, topo: &Topology) -> Result<Vec<Arc<RefCell<DataNode>>>> {
+    fn find_empty_slots(
+        &self,
+        option: &VolumeGrowOption,
+        topo: &Topology,
+    ) -> Result<Vec<Arc<RefCell<DataNode>>>> {
         let mut main_dc: Option<Arc<RefCell<DataCenter>>> = None;
         let mut main_rack: Option<Arc<RefCell<Rack>>> = None;
         let mut main_nd: Option<Arc<RefCell<DataNode>>> = None;
         let mut other_centers: Vec<Arc<RefCell<DataCenter>>> = vec![];
-        let mut other_racks:  Vec<Arc<RefCell<Rack>>> = vec![];
+        let mut other_racks: Vec<Arc<RefCell<Rack>>> = vec![];
         let mut other_nodes: Vec<Arc<RefCell<DataNode>>> = vec![];
 
         let rp = option.replica_placement;
@@ -81,7 +83,7 @@ impl VolumeGrow {
             }
 
             if possible_racks_count < rp.diff_rack_count + 1 {
-                continue
+                continue;
             }
 
             valid_main_counts += 1;
@@ -94,13 +96,13 @@ impl VolumeGrow {
             return Err(Error::NoFreeSpace("find main dc fail".to_string()));
         }
         let main_dc_arc = main_dc.unwrap();
-        
+
 
         if rp.diff_data_center_count > 0 {
             for (dc_id, dc_arc) in topo.data_centers.iter() {
                 let dc = dc_arc.borrow();
                 if *dc_id == main_dc_arc.borrow().id || dc.free_volumes() < 1 {
-                        continue;
+                    continue;
                 }
                 other_centers.push(dc_arc.clone());
             }
@@ -110,7 +112,9 @@ impl VolumeGrow {
         }
 
         thread_rng().shuffle(other_centers.as_mut_slice());
-        let tmp_centers = other_centers.drain(0..rp.diff_data_center_count as usize).collect();
+        let tmp_centers = other_centers
+            .drain(0..rp.diff_data_center_count as usize)
+            .collect();
         other_centers = tmp_centers;
 
 
@@ -133,14 +137,14 @@ impl VolumeGrow {
             let mut possible_nodes = 0;
             for (_node_id, node) in rack.nodes.iter() {
                 if node.borrow().free_volumes() < 1 {
-                    continue
+                    continue;
                 }
 
                 possible_nodes += 1;
             }
 
             if possible_nodes < rp.same_rack_count as usize + 1 {
-                continue
+                continue;
             }
             valid_rack_count += 1;
 
@@ -171,8 +175,8 @@ impl VolumeGrow {
 
         thread_rng().shuffle(other_racks.as_mut_slice());
         let tmp_racks = other_racks.drain(0..rp.diff_rack_count as usize).collect();
-        other_racks = tmp_racks; 
-        
+        other_racks = tmp_racks;
+
 
         // find main node
         let mut valid_node = 0;
@@ -212,9 +216,9 @@ impl VolumeGrow {
         }
         thread_rng().shuffle(other_nodes.as_mut_slice());
         let tmp_nodes = other_nodes.drain(0..rp.same_rack_count as usize).collect();
-        other_nodes =  tmp_nodes;
+        other_nodes = tmp_nodes;
 
-        
+
         let mut ret = vec![];
         ret.push(main_nd_arc.clone());
 
@@ -244,7 +248,12 @@ impl VolumeGrow {
         Ok(len as i64)
     }
 
-    fn grow_by_count_and_type(&self, count: i64, option: &VolumeGrowOption, topo: &mut Topology) -> Result<i64> {
+    fn grow_by_count_and_type(
+        &self,
+        count: i64,
+        option: &VolumeGrowOption,
+        topo: &mut Topology,
+    ) -> Result<i64> {
         let mut grow_count = 0;
         for _ in 0..count {
             grow_count += self.find_and_grow(option, topo)?;
@@ -253,7 +262,13 @@ impl VolumeGrow {
         Ok(grow_count)
     }
 
-    fn grow(&self, vid: VolumeId, option: &VolumeGrowOption, topo: &mut Topology, nodes: Vec<Arc<RefCell<DataNode>>>) -> Result<()> {
+    fn grow(
+        &self,
+        vid: VolumeId,
+        option: &VolumeGrowOption,
+        topo: &mut Topology,
+        nodes: Vec<Arc<RefCell<DataNode>>>,
+    ) -> Result<()> {
         for nd in nodes {
             allocate_volume(&nd.borrow(), vid, option)?;
             let volume_info = VolumeInfo {
@@ -272,15 +287,14 @@ impl VolumeGrow {
             }
 
             topo.register_volume_layout(volume_info, nd.clone());
-             
+
         }
         Ok(())
     }
-
 }
 
 
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct VolumeGrowOption {
     pub collection: String,
     pub replica_placement: storage::ReplicaPlacement,
@@ -291,12 +305,11 @@ pub struct VolumeGrowOption {
     pub data_node: String,
 }
 
-impl VolumeGrowOption {
-}
+impl VolumeGrowOption {}
 
 
 fn allocate_volume(dn: &DataNode, vid: VolumeId, option: &VolumeGrowOption) -> Result<()> {
-    
+
     let vid_p = &vid.to_string();
     let collection_p = &option.collection;
     let rp_p = &option.replica_placement.string();
@@ -304,7 +317,7 @@ fn allocate_volume(dn: &DataNode, vid: VolumeId, option: &VolumeGrowOption) -> R
     let pre_p = &format!("{}", option.preallocate);
 
     let mut params: Vec<(&str, &str)> = vec![];
-    
+
     params.push(("volume", vid_p));
     params.push(("collection", collection_p));
     params.push(("replication", rp_p));
@@ -312,13 +325,13 @@ fn allocate_volume(dn: &DataNode, vid: VolumeId, option: &VolumeGrowOption) -> R
     params.push(("preallocate", pre_p));
 
     let body = util::post(&format!("http://{}/admin/assign_volume", dn.url()), &params)?;
-    
+
     let v: serde_json::Value = serde_json::from_slice(&body)?;
 
     if let Value::String(ref s) = v["Error"] {
         return Err(Error::from(s.clone()));
     }
-    
+
 
     Ok(())
 }

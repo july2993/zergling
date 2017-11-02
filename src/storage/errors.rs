@@ -18,6 +18,12 @@ quick_error! {
             display("{:?}", err)
             description(err.description())
         }
+        ParseIntError(err: std::num::ParseIntError) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
+        }
         Other(err: Box<error::Error + Sync + Send>) {
              from()
              cause(err.as_ref())

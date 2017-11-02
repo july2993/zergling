@@ -114,8 +114,9 @@ impl Needle {
 
         if idx < len && self.has_last_modified_date() {
             // TODO not enough 8 bytes may panic?
-            self.last_modified = Cursor::new(bytes[idx..idx+LAST_MODIFIED_BYTES_LENGTH].to_vec())
-                .read_u64::<BigEndian>().unwrap();
+            self.last_modified = Cursor::new(bytes[idx..idx + LAST_MODIFIED_BYTES_LENGTH].to_vec())
+                .read_u64::<BigEndian>()
+                .unwrap();
             idx += LAST_MODIFIED_BYTES_LENGTH;
         }
 
@@ -126,58 +127,72 @@ impl Needle {
 
         if idx < len && self.has_pairs() {
             self.pairs_size = Cursor::new(bytes[idx..idx + 1].to_vec())
-                .read_u16::<BigEndian>().unwrap();
+                .read_u16::<BigEndian>()
+                .unwrap();
             idx += 2;
             self.pairs = bytes[idx..idx + self.pairs_size as usize].to_vec();
             idx += self.pairs_size as usize;
         }
 
     }
-    
-    // 
-    pub fn read_date(&mut self, file: &mut File, offset: u32, size: u32, version: Version) -> Result<()>{
+
+    //
+    pub fn read_date(
+        &mut self,
+        file: &mut File,
+        offset: u32,
+        size: u32,
+        version: Version,
+    ) -> Result<()> {
         let bytes = read_needle_blob(file, offset, size)?;
         self.parse_needle_header(&bytes);
         if self.size != size {
-            return Err(box_err!("file entry not found. needle {} memory {}", self.size, size));
+            return Err(box_err!(
+                "file entry not found. needle {} memory {}",
+                self.size,
+                size
+            ));
         }
 
         match version {
-            VERSION2 =>  {
+            VERSION2 => {
                 let end = (NEEDLE_HEADER_SIZE + self.size) as usize;
                 self.read_needle_data(&bytes[NEEDLE_HEADER_SIZE as usize..end]);
-            },
+            }
             _ => (),
         };
-        
-        self.checksum = Cursor::new(&bytes[(NEEDLE_HEADER_SIZE+size) as usize..(NEEDLE_HEADER_SIZE+size+NEEDLE_CHECKSUM_SIZE) as usize]).read_u32::<BigEndian>().unwrap();
+
+        self.checksum = Cursor::new(
+            &bytes[(NEEDLE_HEADER_SIZE + size) as usize..
+                       (NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) as usize],
+        ).read_u32::<BigEndian>()
+            .unwrap();
         let cal_checksum = crc32::checksum_castagnoli(&self.data);
 
         if self.checksum != cal_checksum {
             return Err(box_err!("CRC error, may be data on disk corrupted"));
         }
-        
+
         Ok(())
     }
 
     pub fn has_ttl(&self) -> bool {
-        self.flags | FLAG_HAS_TTL > 0  
+        self.flags | FLAG_HAS_TTL > 0
     }
     pub fn has_name(&self) -> bool {
-        self.flags | FLAG_HAS_NAME > 0  
+        self.flags | FLAG_HAS_NAME > 0
     }
     pub fn has_mime(&self) -> bool {
-        self.flags | FLAG_HAS_MIME > 0  
+        self.flags | FLAG_HAS_MIME > 0
     }
     pub fn is_gzipped(&self) -> bool {
-        self.flags | FLAG_GZIP > 0  
+        self.flags | FLAG_GZIP > 0
     }
     pub fn has_pairs(&self) -> bool {
-        self.flags | FLAG_HAS_PAIRS > 0  
+        self.flags | FLAG_HAS_PAIRS > 0
     }
 
     pub fn has_last_modified_date(&self) -> bool {
         self.flags | FLAG_HAS_LAST_MODIFIED_DATE > 0
     }
-
 }

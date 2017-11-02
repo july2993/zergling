@@ -26,7 +26,11 @@ impl Collection {
     }
 
 
-    pub fn get_or_create_volume_layout(&mut self, rp: ReplicaPlacement, ttl: Option<TTL>) -> &mut VolumeLayout {
+    pub fn get_or_create_volume_layout(
+        &mut self,
+        rp: ReplicaPlacement,
+        ttl: Option<TTL>,
+    ) -> &mut VolumeLayout {
 
         let mut key = rp.string();
         if ttl.is_some() {
@@ -35,9 +39,9 @@ impl Collection {
 
         let vsize = self.volume_size_limit;
 
-        self.type2layout
-            .entry(key)
-            .or_insert_with(|| VolumeLayout::new(rp, ttl, vsize))
+        self.type2layout.entry(key).or_insert_with(|| {
+            VolumeLayout::new(rp, ttl, vsize)
+        })
 
     }
 
@@ -52,5 +56,3 @@ impl Collection {
         None
     }
 }
-
-
