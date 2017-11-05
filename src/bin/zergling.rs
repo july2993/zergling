@@ -23,7 +23,9 @@ use std::env;
 
 use zergling::storage;
 use zergling::directory::server::Server;
+use zergling::storage::Server as VServer;
 use zergling::directory::sequencer::MemorySequencer;
+use zergling::storage::NeedleMapType;
 
 
 fn main() {
@@ -64,7 +66,7 @@ fn main() {
         .arg(Arg::with_name("port").long("port").takes_value(true))
         .arg(Arg::with_name("mdir").long("mdir").takes_value(true))
         .subcommand(SubCommand::with_name("master").about("master server"))
-        .subcommand(SubCommand::with_name("volumn").about("volumn server"))
+        .subcommand(SubCommand::with_name("volume").about("volume server"))
         .get_matches();
 
     let mut ip = "localhost";
@@ -111,8 +113,27 @@ fn main() {
 
     }
 
-    if let Some(_matches) = matches.subcommand_matches("volumn") {
+    if let Some(_matches) = matches.subcommand_matches("volume") {
         println!("starting volumn server....");
+
+        let server = VServer::new(
+            ip,
+            port,
+            "127.0.0.1:8080",
+            vec!["./vdata".to_owned()],
+            vec![7],
+            NeedleMapType::NeedleMapInMemory,
+            "127.0.0.1:8080",
+            // todo
+            100,
+            "",
+            "",
+            vec![],
+            true,
+            true,
+        );
+
+        server.serve();
 
     }
 

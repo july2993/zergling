@@ -5,6 +5,7 @@ use pb;
 
 
 #[derive(Clone, Debug, Default)]
+#[derive(Serialize, Deserialize)]
 pub struct VolumeInfo {
     pub id: VolumeId,
     pub size: u64,
@@ -14,7 +15,7 @@ pub struct VolumeInfo {
     pub version: Version,
     pub file_count: i64,
     pub delete_count: i64,
-    pub delte_byte_count: u64,
+    pub delete_byte_count: u64,
     pub read_only: bool,
 }
 
@@ -28,7 +29,7 @@ impl VolumeInfo {
             collection: m.collection.clone(),
             file_count: m.file_count as i64,
             delete_count: m.delete_count as i64,
-            delte_byte_count: m.deleted_byte_count,
+            delete_byte_count: m.deleted_byte_count,
             read_only: m.read_only,
             version: m.version as Version,
             ttl: TTL::from(m.ttl),

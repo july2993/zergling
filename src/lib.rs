@@ -16,6 +16,7 @@ extern crate quick_error;
 extern crate log;
 // extern crate env_logger;
 // extern crate urlencoded;
+#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;

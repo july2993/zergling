@@ -3,18 +3,19 @@ use futures::future;
 use futures::future::Future;
 use futures::sync::oneshot;
 use hyper::header::ContentLength;
-use hyper::StatusCode;
+use hyper::{StatusCode, Method};
 use hyper::server::{Request, Response, Service};
 use url::Url;
 use super::{Store, NeedleMapType};
 use std;
 use std::error::Error;
-use storage::Result;
+use storage::{Result, VolumeInfo};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
+use serde_json;
 use util;
 
 const PHRASE: &'static str = "Hello, World!";
@@ -50,6 +51,10 @@ impl Context {
         match msg {
             Msg::API { req, cb } => {
                 match (req.method(), req.path()) {
+                    (&Method::Get, "/stats") => {
+                        let handle = status_handler(self, &req);
+                        cb(handle);
+                    }
                     (method, path) => {
                         let handle = test_handler(&req);
                         cb(handle);
@@ -100,9 +105,33 @@ pub fn test_handler(_req: &Request) -> Result<Response> {
     )
 }
 
+fn status_handler(ctx: &Context, req: &Request) -> Result<Response> {
+    let mut store = ctx.store.lock().unwrap();
+
+    let mut infos: Vec<VolumeInfo> = vec![];
+    for location in store.locations.iter() {
+        for (_, v) in location.volumes.iter() {
+            let vinfo = v.get_volume_info();
+            infos.push(vinfo);
+        }
+    }
+
+    let volumes = serde_json::to_string(&infos)?;
+    let stat = json!({
+        "Version": "0.1",
+        "Volumes": volumes,
+    });
+
+    let ret = stat.to_string();
+
+    let mut resp = Response::new()
+        .with_header(ContentLength(ret.len() as u64))
+        .with_body(ret);
+    Ok(resp)
+}
+
 pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     let params = util::get_request_params(req);
-
 
     let pre_allocate = params
         .get("preallocate")

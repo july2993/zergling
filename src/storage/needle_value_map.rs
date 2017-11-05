@@ -10,6 +10,7 @@ pub trait NeedleValueMap: Send {
 }
 
 
+#[derive(Default)]
 pub struct MemNeedleValueMap {
     hm: HashMap<u64, NeedleValue>,
 }

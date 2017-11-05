@@ -7,6 +7,7 @@ use pb;
 
 
 // #[derive(Default)]
+// #[derive(Serialize, Deserialize)]
 pub struct Store {
     pub ip: String,
     pub port: u16,

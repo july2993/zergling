@@ -1,5 +1,6 @@
 use std::result;
 use std::error;
+use serde_json;
 use std;
 
 
@@ -19,6 +20,12 @@ quick_error! {
             description(err.description())
         }
         ParseIntError(err: std::num::ParseIntError) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
+        }
+        SerdeJsonError(err: serde_json::Error) {
             from()
             cause(err)
             display("{:?}", err)

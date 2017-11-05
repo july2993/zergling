@@ -4,6 +4,7 @@ use storage::errors::Error::ParseTTL;
 use std::ops::Add;
 // use std::marker::Clone;
 
+#[derive(Serialize, Deserialize)]
 #[derive(Copy, Clone, Debug)]
 pub enum Unit {
     Empty = 0,
@@ -60,6 +61,7 @@ impl Unit {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 #[derive(Debug, Copy, Default)]
 pub struct TTL {
     pub count: u8,
@@ -128,6 +130,15 @@ impl TTL {
         s = s.add(&self.unit.string());
 
         s
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut buf: Vec<u8> = vec![];
+        buf.resize(2, 0);
+        buf[0] = self.count;
+        buf[1] = self.unit as u8;
+
+        buf
     }
 
     pub fn minutes(&self) -> u32 {
