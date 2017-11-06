@@ -36,7 +36,7 @@ impl Store {
         let mut locations = vec![];
         for i in 0..folders.len() {
             let mut location = DiskLocation::new(&folders[i], max_counts[i]);
-            location.load_existing_volumes(needle_map_kind);
+            location.load_existing_volumes(needle_map_kind).unwrap();
             locations.push(location);
         }
 
@@ -64,6 +64,10 @@ impl Store {
             }
         }
         None
+    }
+
+    pub fn has_volume(&self, vid: VolumeId) -> bool {
+        self.find_volume(vid).is_some()
     }
 
     pub fn find_volume(&self, vid: VolumeId) -> Option<&Volume> {

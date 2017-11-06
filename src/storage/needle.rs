@@ -8,8 +8,9 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
-use crc::{crc32, Hasher32};
+use crc::crc32;
 use std::io::SeekFrom;
+use byteorder::WriteBytesExt;
 
 
 
@@ -33,6 +34,7 @@ pub const FLAG_IS_CHUNK_MANIFEST: u8 = 0x80;
 pub const LAST_MODIFIED_BYTES_LENGTH: usize = 5;
 pub const TTL_BYTES_LENGTH: usize = 2;
 
+#[derive(Default)]
 pub struct Needle {
     pub cookie: u32,
     pub id: u64,
@@ -84,6 +86,32 @@ impl Needle {
         self.size = rdr.read_u32::<BigEndian>().unwrap();
     }
 
+    pub fn parse_path(&mut self, fid: &str) -> Result<()> {
+        if fid.len() <= 8 {
+            return Err(box_err!("invalid fid: {}", fid));
+        }
+
+        let id: &str;
+        let delta: &str;
+        if let Some(idx) = fid.find("_") {
+            id = &fid[0..idx];
+            delta = &fid[idx + 1..];
+        } else {
+            id = &fid[0..fid.len()];
+            delta = &fid[0..0];
+        }
+
+        let ret = parse_key_hash(id)?;
+        self.id = ret.0;
+        self.cookie = ret.1;
+        if delta.len() > 0 {
+            let idelta: u64 = delta.parse()?;
+            self.id += idelta;
+        }
+
+        Ok(())
+    }
+
 
     // TODO: avoid data copy
     fn read_needle_data(&mut self, bytes: &[u8]) {
@@ -131,7 +159,7 @@ impl Needle {
                 .unwrap();
             idx += 2;
             self.pairs = bytes[idx..idx + self.pairs_size as usize].to_vec();
-            idx += self.pairs_size as usize;
+            // idx += self.pairs_size as usize;
         }
 
     }
@@ -195,4 +223,27 @@ impl Needle {
     pub fn has_last_modified_date(&self) -> bool {
         self.flags | FLAG_HAS_LAST_MODIFIED_DATE > 0
     }
+
+    pub fn etag(&self) -> String {
+        let mut buf: Vec<u8> = vec![0, 4];
+        {
+            let mut r = &mut buf[0..4];
+            r.write_u32::<BigEndian>(self.checksum).unwrap();
+        }
+        format!("{}{}{}{}", buf[0], buf[1], buf[2], buf[3])
+    }
+}
+
+
+fn parse_key_hash(hash: &str) -> Result<(u64, u32)> {
+    if hash.len() <= 8 || hash.len() > 24 {
+        return Err(box_err!("key_hash too short or too long: {}", hash));
+    }
+
+    let key_end = hash.len() - 8;
+
+    let key: u64 = hash[0..key_end].parse()?;
+    let cookie: u32 = hash[key_end..].parse()?;
+
+    Ok((key, cookie))
 }

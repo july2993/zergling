@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::path::Path;
 use std::fs::{File, metadata, Metadata};
 use std::io::ErrorKind;
 use std::os::unix::fs::OpenOptionsExt;
@@ -116,7 +117,7 @@ impl Volume {
         needle_map_kind: NeedleMapType,
         replica_placement: ReplicaPlacement,
         ttl: TTL,
-        pre_allocate: i64,
+        _pre_allocate: i64,
     ) -> Result<Volume> {
 
         let sb = SuperBlock {
@@ -148,18 +149,15 @@ impl Volume {
         }
 
 
-        let mut name = self.file_name();
-        name.push_str(".dat");
+        let meta: Metadata;
+        let name = self.data_file_name();
 
-
-        let mut meta: Metadata;
-
-        match metadata(&self.file_name()) {
+        match metadata(&name) {
             Ok(m) => meta = m,
             Err(err) => {
                 if err.kind() == ErrorKind::NotFound && create_if_missing {
                     // TODO suppose pre_allocate
-                    let file = fs::OpenOptions::new()
+                    fs::OpenOptions::new()
                         .read(true)
                         .write(true)
                         .create(true)
@@ -174,7 +172,6 @@ impl Volume {
         };
 
         if !meta.permissions().readonly() {
-
             let file = fs::OpenOptions::new()
                 .read(true)
                 .write(true)
@@ -188,7 +185,8 @@ impl Volume {
                 .as_secs();
             self.data_file = Some(file);
         } else {
-            let file = fs::OpenOptions::new().read(true).open(&name);
+            let file = fs::OpenOptions::new().read(true).open(&name)?;
+            self.data_file = Some(file);
 
             self.read_only = true;
         }
@@ -238,10 +236,12 @@ impl Volume {
 
 
     pub fn write_needle(&mut self, n: &Needle) -> Result<u32> {
+        let _ = n;
         panic!("TODO");
     }
 
     pub fn delete_needle(&mut self, n: &Needle) -> Result<u32> {
+        let _ = n;
         panic!("TODO");
     }
 
@@ -278,6 +278,12 @@ impl Volume {
         self.super_block.version
     }
 
+    pub fn data_file_name(&self) -> String {
+        let mut f = self.file_name();
+        f.push_str(".dat");
+        f
+    }
+
     pub fn file_name(&self) -> String {
         let mut rt = self.dir.clone();
         if self.collection == "" {
@@ -307,12 +313,24 @@ impl Volume {
         }
     }
 
+    pub fn destroy(&mut self) -> Result<()> {
+        if self.read_only {
+            return Err(box_err!("{} is read only", self.data_file_name()));
+        }
+
+        fs::remove_file(Path::new(&self.data_file_name()))?;
+
+        self.nm.destroy()?;
+
+        Ok(())
+    }
+
     pub fn content_size(&self) -> u64 {
+        // TODO
         0
     }
 
     pub fn size() -> i64 {
         panic!("TODO");
-        0
     }
 }

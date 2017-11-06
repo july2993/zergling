@@ -12,11 +12,8 @@ use hyper;
 use hyper::header::ContentLength;
 use hyper::server::{Request, Response, Service};
 use hyper::Method;
-use url::Url;
 use operation::ClusterStatusResult;
 use util;
-
-
 
 use serde_json;
 

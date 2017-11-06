@@ -36,7 +36,7 @@ impl Server {
         pulse_seconds: i64,
         data_center: &str,
         rack: &str,
-        white_list: Vec<String>,
+        _white_list: Vec<String>,
         fix_jpg_orientation: bool,
         read_redirect: bool,
     ) -> Server {
@@ -59,23 +59,24 @@ impl Server {
 
 
     pub fn serve(&self) {
-
-
         let (sender, receiver) = channel();
         let ctx = storage::api::Context {
             sender: Arc::new(sender.clone()),
             store: self.store.clone(),
             needle_map_kind: self.needle_map_kind,
+            read_redirect: self.read_redirect,
         };
 
         let store = self.store.clone();
         let needle_map_kind = self.needle_map_kind;
+        let read_redirect = self.read_redirect;
 
         thread::spawn(move || {
             let mut ctx = storage::api::Context {
                 sender: Arc::new(sender.clone()),
                 store: store,
                 needle_map_kind: needle_map_kind,
+                read_redirect: read_redirect,
             };
             ctx.run(receiver)
         });
@@ -83,9 +84,9 @@ impl Server {
         let mut addr_str = self.ip.clone();
         addr_str.push_str(":");
         addr_str.push_str(&self.port.to_string());
+        debug!("addr: {}", addr_str);
         let addr = addr_str.parse().unwrap();
         let server = Http::new().bind(&addr, move || Ok(ctx.clone())).unwrap();
         server.run().unwrap();
-
     }
 }

@@ -25,7 +25,11 @@ impl DiskLocation {
         }
     }
 
-    pub fn concurrent_loading_volumes(&mut self, needle_map_kind: NeedleMapType, concurrent: bool) {
+    pub fn concurrent_loading_volumes(
+        &mut self,
+        _needle_map_kind: NeedleMapType,
+        _concurrent: bool,
+    ) {
         panic!("TODO");
     }
 
@@ -37,8 +41,8 @@ impl DiskLocation {
 
         let name = p.file_name().unwrap().to_str().unwrap();
 
-        let mut collection: &str;
-        let mut id: &str;
+        let collection: &str;
+        let id: &str;
         if let Some(idx) = name.find("_") {
             collection = &name[0..idx];
             id = &name[idx + 1..name.len() - 4];
@@ -95,7 +99,11 @@ impl DiskLocation {
     }
 
     pub fn delete_volume(&mut self, vid: VolumeId) -> Result<()> {
-        panic!("TODO");
+        if let Some(v) = self.volumes.get_mut(&vid) {
+            v.destroy()?;
+        }
+
+        self.volumes.remove(&vid);
 
         Ok(())
     }

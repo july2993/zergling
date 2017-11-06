@@ -1,7 +1,6 @@
-use storage;
 use std;
 use std::io::BufReader;
-use std::fs::{File, metadata, Metadata};
+use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::prelude::*;
@@ -11,7 +10,7 @@ use storage::{NeedleValueMap, NeedleValue, Result};
 use storage::needle_value_map::MemNeedleValueMap;
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum NeedleMapType {
     NeedleMapInMemory = 0,
     // NeedleMapLevelDb = 1,
@@ -33,11 +32,21 @@ pub struct NeedleMapper {
 
 impl std::default::Default for NeedleMapper {
     fn default() -> Self {
-        NeedleMapper { nvp: Box::new(MemNeedleValueMap::default()) }
+        NeedleMapper { nvp: Box::new(MemNeedleValueMap::new()) }
     }
 }
 
 impl NeedleMapper {
+    pub fn new(kind: NeedleMapType) -> NeedleMapper {
+        #[allow(unreachable_patterns)]
+        match kind {
+            NeedleMapType::NeedleMapInMemory => {
+                NeedleMapper { nvp: Box::new(MemNeedleValueMap::new()) }
+            }
+            _ => panic!("not support map type: {:?}", kind),
+        }
+    }
+
     pub fn load_idx_file(&mut self, f: &mut File) -> Result<()> {
         walk_index_file(f, |key, offset, size| -> Result<()> {
             if offset > 0 && size != TOMBSTONE_FILE_SIZE {
@@ -65,6 +74,13 @@ impl NeedleMapper {
 
     pub fn get(&self, key: u64) -> Option<NeedleValue> {
         self.nvp.get(key)
+    }
+
+    pub fn destroy(&mut self) -> Result<()> {
+        // TODO may need rm index file
+
+
+        Ok(())
     }
 
     pub fn file_count(&self) -> u64 {
@@ -111,11 +127,11 @@ where
 }
 
 
-pub struct BaseNeedleMapper {
-    index_file: File,
-    deletion_counter: u64,
-    file_counter: u64,
-    deletion_byte_counter: u64,
-    file_byte_counter: u64,
-    maximum_file_key: u64,
-}
+// pub struct BaseNeedleMapper {
+//     index_file: File,
+//     deletion_counter: u64,
+//     file_counter: u64,
+//     deletion_byte_counter: u64,
+//     file_byte_counter: u64,
+//     maximum_file_key: u64,
+// }

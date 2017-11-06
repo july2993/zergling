@@ -1,4 +1,7 @@
 
+#![allow(unused_imports)]
+#![allow(unused_macros)]
+#![allow(unknown_lints)]
 // #![crate_type = "lib"]
 // #![cfg_attr(test, feature(test))]
 #![feature(fnbox)]
@@ -29,6 +32,7 @@ extern crate url;
 extern crate byteorder;
 extern crate time;
 extern crate crc;
+extern crate libflate;
 
 
 

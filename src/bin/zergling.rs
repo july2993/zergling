@@ -69,7 +69,7 @@ fn main() {
         .subcommand(SubCommand::with_name("volume").about("volume server"))
         .get_matches();
 
-    let mut ip = "localhost";
+    let mut ip = "127.0.0.1";
     let mut ip_bind = "0.0.0.0";
     let mut port = 9333;
     let mut volume_size_limit_mb = 30 * 1000;
@@ -132,10 +132,6 @@ fn main() {
             true,
             true,
         );
-
         server.serve();
-
     }
-
-
 }

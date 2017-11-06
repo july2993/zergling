@@ -1,20 +1,28 @@
 use hyper;
+use std::io::Read;
 use futures::future;
 use futures::future::Future;
 use futures::sync::oneshot;
 use hyper::header::ContentLength;
+use hyper::header;
+use std::collections::HashMap;
+use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate};
 use hyper::{StatusCode, Method};
 use hyper::server::{Request, Response, Service};
+use std::time::{SystemTime, Duration};
+use std::ops::Add;
 use url::Url;
 use super::{Store, NeedleMapType};
 use std;
+use std::time;
 use std::error::Error;
-use storage::{Result, VolumeInfo};
+use storage::{Result, VolumeInfo, Needle};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
+use libflate::gzip::{Encoder, Decoder};
 use serde_json;
 use util;
 
@@ -36,6 +44,7 @@ pub struct Context {
     pub sender: Arc<Sender<Msg>>,
     pub store: Arc<Mutex<Store>>,
     pub needle_map_kind: NeedleMapType,
+    pub read_redirect: bool,
 }
 
 impl Context {
@@ -50,12 +59,29 @@ impl Context {
     fn handle_msg(&mut self, msg: Msg) {
         match msg {
             Msg::API { req, cb } => {
+                debug!("hanle msg: [{}] {}", req.method(), req.path());
                 match (req.method(), req.path()) {
                     (&Method::Get, "/stats") => {
                         let handle = status_handler(self, &req);
                         cb(handle);
                     }
-                    (method, path) => {
+                    (&Method::Get, "/admin/assign_volume") => {
+                        let handle = assign_volume_handler(self, &req);
+                        cb(handle);
+                    }
+                    (&Method::Get, "/favicon.ico") => {
+                        let handle = test_handler(&req);
+                        cb(handle);
+                    }
+                    (&Method::Get, _) => {
+                        let handle = get_or_head_handler(self, &req);
+                        cb(handle);
+                    }
+                    (&Method::Head, _) => {
+                        let handle = get_or_head_handler(self, &req);
+                        cb(handle);
+                    }
+                    (_, _) => {
                         let handle = test_handler(&req);
                         cb(handle);
                     }
@@ -79,7 +105,7 @@ impl Service for Context {
         self.sender.send(Msg::API { req, cb }).unwrap();
 
         let future = future
-            .map_err(|err| {
+            .map_err(|_err| {
                 // TODO more specify error?
                 hyper::Error::Timeout
             })
@@ -105,8 +131,8 @@ pub fn test_handler(_req: &Request) -> Result<Response> {
     )
 }
 
-fn status_handler(ctx: &Context, req: &Request) -> Result<Response> {
-    let mut store = ctx.store.lock().unwrap();
+fn status_handler(ctx: &Context, _req: &Request) -> Result<Response> {
+    let store = ctx.store.lock().unwrap();
 
     let mut infos: Vec<VolumeInfo> = vec![];
     for location in store.locations.iter() {
@@ -124,7 +150,7 @@ fn status_handler(ctx: &Context, req: &Request) -> Result<Response> {
 
     let ret = stat.to_string();
 
-    let mut resp = Response::new()
+    let resp = Response::new()
         .with_header(ContentLength(ret.len() as u64))
         .with_body(ret);
     Ok(resp)
@@ -150,19 +176,160 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     )?;
 
 
-    let mut resp = Response::new()
-        .with_header(ContentLength(PHRASE.len() as u64))
-        .with_body(PHRASE);
+    let mut resp = Response::new();
 
     resp.set_status(StatusCode::Accepted);
 
     Ok(resp)
 }
 
+// pub fn post_handler(ctx: &Context, req: &Request) -> Result<Response> {
+//     let (svid, _, _, _, _) = parse_url_path(req.path());
+//     let vid = svid.parse::<u32>()?;
 
-// pub fn post_handler() -> Result<Response> {
 
 // }
+
+pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
+    let params = util::get_request_params(req);
+
+    let (svid, fid, mut filename, mut ext, _) = parse_url_path(req.path());
+
+    let vid = svid.parse::<u32>()?;
+
+    let mut n = Needle::default();
+    n.parse_path(&fid)?;
+    let cookie = n.cookie;
+
+    let mut store = ctx.store.lock().unwrap();
+    let mut resp = Response::new();
+
+    if !store.has_volume(vid) {
+        if !ctx.read_redirect {
+            info!("volume is not local: {}", req.path());
+            resp.set_status(StatusCode::NotFound);
+            return Ok(resp);
+        } else {
+            //TODO support read_redirect
+            panic!("TODO");
+        }
+    }
+
+    let count = store.read_volume_needle(vid, &mut n)?;
+    debug!("read {} byte for {}", count, fid);
+    if n.cookie != cookie {
+        info!("cookie not match from {:?} recv: {} file is {}", req.remote_addr(), cookie, n.cookie);
+        resp.set_status(StatusCode::NotFound);
+        return Ok(resp);
+    }
+
+    if n.last_modified != 0 {
+        let modified = time::UNIX_EPOCH.add(Duration::new(n.last_modified, 0));
+        resp.headers_mut().set(LastModified(modified.into()));
+
+        if let Some(since) = req.headers().get::<IfModifiedSince>() {
+            if since.0.le(&HttpDate::from(modified)) {
+                resp.set_status(StatusCode::NotModified);
+                return Ok(resp);
+            }
+        }
+    }
+
+    let etag = n.etag();
+
+    if let Some(not_match) = req.headers().get_raw("If-None-Match") {
+        if not_match == etag.as_str() {
+            resp.set_status(StatusCode::NotModified);
+            return Ok(resp);
+        }
+    }
+
+    if n.has_pairs() {
+        // TODO support pairs
+        // https://hyper.rs/hyper/0.8.0/hyper/header/index.html
+        // let j: serde_json::Value = serde_json::from_slice(&n.pairs)?;
+        // for (k, v) in j.as_object().unwrap() {
+        //     debug!("{} {}", k, v);
+        //     resp.headers_mut().set_raw(k, v.as_str().unwrap());
+        // }
+    }
+
+    // chunk file
+    // TODO
+
+    if n.name.len() > 0 && filename.len() == 0 {
+        filename = String::from_utf8(n.name.clone()).unwrap();
+        if ext.len() == 0 {
+            ext = Path::new(&filename)
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+        }
+    }
+
+    let _ = ext;
+
+    let mut mtype = String::new();
+    if n.mime.len() > 0 {
+        if !n.mime.starts_with(b"application/octet-stream") {
+            mtype = String::from_utf8(n.mime.clone()).unwrap();
+        }
+    }
+
+    if n.is_gzipped() {
+        if let Some(ae) = req.headers().get::<header::AcceptEncoding>() {
+            let mut gzip = false;
+            for qitem in ae.0.iter() {
+                if qitem.item == header::Encoding::Gzip {
+                    gzip = true;
+                    break;
+                }
+            }
+            if gzip {
+                resp.headers_mut().set_raw("Content-Encoding", "gzip");
+            } else {
+                let mut decoded_data = Vec::new();
+                {
+                    let mut decoder = Decoder::new(&n.data[..])?;
+                    decoder.read_to_end(&mut decoded_data)?;
+                }
+                n.data = decoded_data;
+            }
+        }
+    }
+
+    // TODO support  image resize
+
+
+    resp = write_response_content(params, &filename, &mtype, resp, &n.data);
+
+    resp.set_status(StatusCode::Accepted);
+
+    Ok(resp)
+}
+
+fn write_response_content(
+    _params: HashMap<String, String>,
+    _filename: &str,
+    _mtype: &str,
+    _resp: Response,
+    data: &Vec<u8>,
+) -> Response {
+
+    //TODO handle range contenttype and...
+    let len = data.len() as u64;
+    let resp = _resp.with_header(ContentLength(len)).with_body(
+        String::from_utf8(
+            data.clone(),
+        ).unwrap(),
+    );
+
+
+    resp
+}
+
+
 
 
 // support following format
@@ -173,9 +340,9 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
 // http://localhost:8080/3,01637037d6
 // @return vid, fid, filename, ext, is_volume_id_only
 fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
-    let mut vid: String;
+    let vid: String;
     let mut fid: String;
-    let mut filename: String;
+    let filename: String;
     let mut ext: String = String::default();
     let mut is_volume_id_only = false;
 
