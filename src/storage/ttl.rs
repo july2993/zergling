@@ -152,6 +152,15 @@ impl TTL {
             Unit::Year => self.count as u32 * 60 * 24 * 365,
         }
     }
+
+    pub fn to_u32(&self) -> u32 {
+        let mut ret = 0;
+        ret += (self.count as u32) << 8;
+        ret += self.unit as u32;
+
+
+        ret
+    }
 }
 
 impl From<u32> for TTL {

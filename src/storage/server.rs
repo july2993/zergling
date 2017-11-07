@@ -3,9 +3,12 @@ use grpcio::*;
 use std::sync::mpsc::channel;
 // use std::sync::mpsc::sync_channel;
 use futures::*;
-use std::thread;
+use std::time::*;
+use std::{thread, time};
 use storage;
+use storage::Result;
 use storage::Store;
+use pb;
 
 use hyper::server::{Http, Request, Response, Service};
 
@@ -57,29 +60,42 @@ impl Server {
         server
     }
 
+    pub fn spawn_heartbeat(&self, ctx: storage::api::Context) {
+        thread::spawn(move || ctx.heartbeat());
+    }
+
 
     pub fn serve(&self) {
         let (sender, receiver) = channel();
         let ctx = storage::api::Context {
-            sender: Arc::new(sender.clone()),
+            sender: sender.clone(),
             store: self.store.clone(),
             needle_map_kind: self.needle_map_kind,
             read_redirect: self.read_redirect,
+            pulse_seconds: self.pulse_seconds as u64,
+            master_node: self.master_node.clone(),
         };
+
 
         let store = self.store.clone();
         let needle_map_kind = self.needle_map_kind;
         let read_redirect = self.read_redirect;
+        let pulse_seconds = self.pulse_seconds as u64;
+        let master_node = self.master_node.clone();
 
         thread::spawn(move || {
             let mut ctx = storage::api::Context {
-                sender: Arc::new(sender.clone()),
+                sender: sender.clone(),
                 store: store,
                 needle_map_kind: needle_map_kind,
                 read_redirect: read_redirect,
+                pulse_seconds: pulse_seconds,
+                master_node: master_node.clone(),
             };
             ctx.run(receiver)
         });
+
+        self.spawn_heartbeat(ctx.clone());
 
         let mut addr_str = self.ip.clone();
         addr_str.push_str(":");

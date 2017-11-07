@@ -123,7 +123,8 @@ fn main() {
             vec!["./vdata".to_owned()],
             vec![7],
             NeedleMapType::NeedleMapInMemory,
-            "127.0.0.1:8080",
+            // TODO config master node
+            "127.0.0.1:9334",
             // todo
             100,
             "",

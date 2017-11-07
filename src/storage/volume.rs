@@ -4,11 +4,14 @@
 use std::fs;
 use std::path::Path;
 use std::fs::{File, metadata, Metadata};
+use std::time::{Duration, SystemTime};
 use std::io::ErrorKind;
 use std::os::unix::fs::OpenOptionsExt;
 use std::time::UNIX_EPOCH;
 use std::io::SeekFrom;
 use std::io::Cursor;
+// use std::os::ext::fs::MetadataExt;
+// use std::os::unix::fs::MetadataExt;
 use byteorder::WriteBytesExt;
 use byteorder::{BigEndian, ReadBytesExt};
 // use std::io::Read;
@@ -80,13 +83,9 @@ impl SuperBlock {
             let mut r = &mut buf[4..6];
             r.write_u16::<BigEndian>(self.compact_revision).unwrap();
         }
-
-
         buf
     }
 }
-
-
 
 #[derive(Default)]
 pub struct Volume {
@@ -97,17 +96,12 @@ pub struct Volume {
     pub nm: NeedleMapper,
     pub needle_map_kind: NeedleMapType,
     pub replica_placement: ReplicaPlacement,
-
     pub read_only: bool,
-
     pub super_block: SuperBlock,
-
     pub last_modified_time: u64,
-
     pub last_compact_index_offset: u64,
     pub last_compact_revision: u16,
 }
-
 
 impl Volume {
     pub fn new(
@@ -308,7 +302,7 @@ impl Volume {
             version: self.version(),
             file_count: self.nm.file_count() as i64,
             delete_count: self.nm.delete_count() as i64,
-            delete_byte_count: self.nm.delete_byte_count(),
+            delete_byte_count: self.nm.deleted_byte_count(),
             read_only: self.read_only,
         }
     }
@@ -330,7 +324,60 @@ impl Volume {
         0
     }
 
-    pub fn size() -> i64 {
-        panic!("TODO");
+    pub fn size(&self) -> Result<u64> {
+        match self.data_file {
+            None => return Err(box_err!("not open {}", self.data_file_name())),
+            Some(ref file) => Ok(file.metadata()?.len()),
+        }
+    }
+
+    // volume is expired if modified time + volume ttl < now
+    // except when volume is empty
+    // or when the volume does not have a ttl
+    // or when volumeSizeLimit is 0 when server just starts
+    pub fn expired(&self, volume_size_limit: u64) -> bool {
+        if volume_size_limit == 0 {
+            return false;
+        }
+
+        if self.content_size() == 0 {
+            return false;
+        }
+
+        // change self ttl to option?
+        if self.super_block.ttl.minutes() == 0 {
+            return false;
+        }
+
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        if now.as_secs() > self.last_modified_time + self.super_block.ttl.minutes() as u64 * 60 {
+            return true;
+        }
+
+        false
+    }
+
+    // wait either maxDelayMinutes or 10% of ttl minutes
+    pub fn expired_long_enough(&self, max_delay_minutes: u64) -> bool {
+        let ttl = self.super_block.ttl;
+        if ttl.minutes() == 0 {
+            return false;
+        }
+
+        let mut delay: u64 = ttl.minutes() as u64 / 10;
+        if delay > max_delay_minutes {
+            delay = max_delay_minutes;
+        }
+
+        if (ttl.minutes() as u64 + delay) * 60 + self.last_modified_time <
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        {
+            return true;
+        }
+
+        false
     }
 }

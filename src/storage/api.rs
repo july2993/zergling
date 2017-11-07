@@ -10,6 +10,10 @@ use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate};
 use hyper::{StatusCode, Method};
 use hyper::server::{Request, Response, Service};
 use std::time::{SystemTime, Duration};
+use std::thread;
+use grpcio::*;
+use futures::*;
+use pb;
 use std::ops::Add;
 use url::Url;
 use super::{Store, NeedleMapType};
@@ -41,10 +45,12 @@ fn make_callback() -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Re
 
 #[derive(Clone)]
 pub struct Context {
-    pub sender: Arc<Sender<Msg>>,
+    pub sender: Sender<Msg>,
     pub store: Arc<Mutex<Store>>,
     pub needle_map_kind: NeedleMapType,
     pub read_redirect: bool,
+    pub pulse_seconds: u64,
+    pub master_node: String,
 }
 
 impl Context {
@@ -89,6 +95,55 @@ impl Context {
             }
         }
 
+    }
+
+    pub fn heartbeat(&self) {
+        loop {
+            warn!("start heartbeat....");
+            self.start_heartbeat();
+            warn!("heartbeat end....");
+            thread::sleep(Duration::from_secs(self.pulse_seconds as u64));
+        }
+    }
+
+    pub fn start_heartbeat(&self) {
+        let env = Arc::new(Environment::new(2));
+        let channel = ChannelBuilder::new(env).connect(&self.master_node);
+        let client = pb::zergling_grpc::SeaweedClient::new(channel);
+
+        let (mut sink, mut receiver) = client.send_heartbeat();
+
+        let h = thread::spawn(move || loop {
+            match receiver.into_future().wait() {
+                Ok((Some(beat), r)) => {
+                    debug!("recv: {:?}", beat);
+                    receiver = r;
+                }
+                Ok((None, _)) => break,
+                Err((e, _)) => {
+                    error!("RPC failed: {:?}", e);
+                    break;
+                }
+            }
+        });
+
+        loop {
+            let beat = self.store.lock().unwrap().collect_heartbeat();
+            match sink.send((beat, WriteFlags::default())).wait() {
+                Ok(ret) => sink = ret,
+                Err(err) => {
+                    error!("send err: {}", err);
+                    break;
+                }
+            }
+
+            thread::sleep(Duration::from_secs(self.pulse_seconds as u64));
+        }
+
+        // sink.close();
+        if let Err(err) = h.join() {
+            error!("join err: {:?}", err);
+        }
     }
 }
 

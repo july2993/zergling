@@ -5,6 +5,7 @@ use storage::{DiskLocation, VolumeId, Needle, Result, Volume, Error, NeedleMapTy
               ReplicaPlacement, TTL};
 use pb;
 
+const MAX_TTL_VOLUME_REMOVAL_DELAY_MINUTES: u64 = 10;
 
 // #[derive(Default)]
 // #[derive(Serialize, Deserialize)]
@@ -223,5 +224,58 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    pub fn collect_heartbeat(&mut self) -> pb::zergling::Heartbeat {
+        let mut beat = pb::zergling::Heartbeat::default();
+
+        let mut max_file_key: u64 = 0;
+        let mut max_volume_count = 0;
+        for location in self.locations.iter_mut() {
+            let mut deleted_vids = Vec::new();
+            max_volume_count += location.max_volume_count;
+            for (vid, v) in location.volumes.iter() {
+                if v.nm.max_file_key() > max_file_key {
+                    max_file_key = v.nm.max_file_key();
+                }
+
+                if v.expired(self.volume_size_limit) {
+                    let mut msg = pb::zergling::VolumeInformationMessage::new();
+                    msg.set_id(*vid);
+                    msg.set_size(v.size().unwrap_or(0));
+                    msg.set_collection(v.collection.clone());
+                    msg.set_file_count(v.nm.file_count());
+                    msg.set_delete_count(v.nm.delete_count());
+                    msg.set_deleted_byte_count(v.nm.deleted_byte_count());
+                    msg.set_read_only(v.read_only);
+                    msg.set_replica_placement(v.super_block.replica_placement.byte() as u32);
+                    msg.set_version(v.super_block.version as u32);
+                    msg.set_ttl(v.super_block.ttl.to_u32());
+                    beat.volumes.push(msg);
+                } else {
+                    if v.expired_long_enough(MAX_TTL_VOLUME_REMOVAL_DELAY_MINUTES) {
+                        deleted_vids.push(v.id);
+                        info!("volume {} is deleted.", v.id);
+                    } else {
+                        info!("volume {} is expired.", *vid);
+                    }
+                }
+            }
+            for vid in deleted_vids {
+                if let Err(err) = location.delete_volume(vid) {
+                    warn!("delete volume {} err: {}", vid, err);
+                }
+            }
+        }
+
+        beat.ip = self.ip.clone();
+        beat.port = self.port as u32;
+        beat.public_url = self.public_url.clone();
+        beat.max_volume_count = max_volume_count as u32;
+        beat.max_file_key = max_file_key;
+        beat.data_center = self.data_center.clone();
+        beat.rack = self.rack.clone();
+
+        beat
     }
 }

@@ -24,15 +24,28 @@ impl Default for NeedleMapType {
     }
 }
 
+#[derive(Default)]
+struct Metric {
+    maximum_file_key: u64,
+    file_count: u64,
+    deleted_count: u64,
+    deleted_byte_count: u64,
+    file_byte_count: u64,
+}
 
 // #[derive(Default)]
 pub struct NeedleMapper {
     nvp: Box<NeedleValueMap>,
+
+    metric: Metric,
 }
 
 impl std::default::Default for NeedleMapper {
     fn default() -> Self {
-        NeedleMapper { nvp: Box::new(MemNeedleValueMap::new()) }
+        NeedleMapper {
+            nvp: Box::new(MemNeedleValueMap::new()),
+            metric: Metric::default(),
+        }
     }
 }
 
@@ -41,7 +54,10 @@ impl NeedleMapper {
         #[allow(unreachable_patterns)]
         match kind {
             NeedleMapType::NeedleMapInMemory => {
-                NeedleMapper { nvp: Box::new(MemNeedleValueMap::new()) }
+                NeedleMapper {
+                    nvp: Box::new(MemNeedleValueMap::new()),
+                    metric: Metric::default(),
+                }
             }
             _ => panic!("not support map type: {:?}", kind),
         }
@@ -65,11 +81,30 @@ impl NeedleMapper {
     }
 
     pub fn set(&mut self, key: u64, needle_value: NeedleValue) -> Option<NeedleValue> {
-        self.nvp.set(key, needle_value)
+        if key > self.metric.maximum_file_key {
+            self.metric.maximum_file_key = key;
+        }
+        self.metric.file_count += 1;
+        self.metric.file_byte_count += needle_value.size as u64;
+        let old = self.nvp.set(key, needle_value);
+
+        if let Some(n) = old {
+            self.metric.deleted_count += 1;
+            self.metric.deleted_byte_count += n.size as u64;
+        }
+
+        old
     }
 
     pub fn delete(&mut self, key: u64) -> Option<NeedleValue> {
-        self.nvp.delete(key)
+        let old = self.nvp.delete(key);
+
+        if let Some(n) = old {
+            self.metric.deleted_count += 1;
+            self.metric.deleted_byte_count += n.size as u64;
+        }
+
+        old
     }
 
     pub fn get(&self, key: u64) -> Option<NeedleValue> {
@@ -84,13 +119,21 @@ impl NeedleMapper {
     }
 
     pub fn file_count(&self) -> u64 {
-        0
+        self.metric.file_count
     }
     pub fn delete_count(&self) -> u64 {
-        0
+        self.metric.deleted_count
     }
-    pub fn delete_byte_count(&self) -> u64 {
-        0
+    pub fn deleted_byte_count(&self) -> u64 {
+        self.metric.deleted_byte_count
+    }
+
+    pub fn max_file_key(&self) -> u64 {
+        self.metric.maximum_file_key
+    }
+
+    pub fn content_size(&self) -> u64 {
+        self.metric.file_byte_count
     }
 }
 
@@ -125,13 +168,3 @@ where
 
     Ok(())
 }
-
-
-// pub struct BaseNeedleMapper {
-//     index_file: File,
-//     deletion_counter: u64,
-//     file_counter: u64,
-//     deletion_byte_counter: u64,
-//     file_byte_counter: u64,
-//     maximum_file_key: u64,
-// }
