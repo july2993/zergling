@@ -157,6 +157,7 @@ impl Store {
         ttl: TTL,
         pre_allocate: i64,
     ) -> Result<()> {
+        debug!("do_add_volume vid: {} collection: {}", vid, collection);
         if self.find_volume(vid).is_some() {
             return Err(box_err!("volume id {} already exists!", vid));
         }
@@ -164,6 +165,7 @@ impl Store {
         let location = self.find_free_location().ok_or::<Error>(
             box_err!("no more free space left"),
         )?;
+
         let volume = Volume::new(
             &location.directory,
             collection,
@@ -193,6 +195,8 @@ impl Store {
 
         let rp = ReplicaPlacement::new(replica_placement)?;
         let ttl = TTL::new(ttl_str)?;
+
+        debug!("add_volume rp: {:?} ttl: {:?}", rp, ttl);
 
         for range_str in volume_list.split(",") {
             let parts: Vec<&str> = range_str.split("-").collect();
@@ -239,7 +243,7 @@ impl Store {
                     max_file_key = v.nm.max_file_key();
                 }
 
-                if v.expired(self.volume_size_limit) {
+                if !v.expired(self.volume_size_limit) {
                     let mut msg = pb::zergling::VolumeInformationMessage::new();
                     msg.set_id(*vid);
                     msg.set_size(v.size().unwrap_or(0));

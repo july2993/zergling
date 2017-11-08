@@ -134,7 +134,7 @@ impl ZService for Server {
 
         let to_send = stream
             .map(move |heartbeat| {
-                // debug!("recv heartbeat: {:?}", heartbeat);
+                debug!("recv heartbeat: {:?}", heartbeat);
 
                 let mut topo = topo.lock().unwrap();
                 topo.sequence.set_max(heartbeat.max_file_key);

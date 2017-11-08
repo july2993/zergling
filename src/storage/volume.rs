@@ -68,8 +68,7 @@ impl SuperBlock {
     }
 
     pub fn bytes(&self) -> Vec<u8> {
-        let mut buf: Vec<u8> = vec![];
-        buf.resize(SUPER_BLOCK_SIZE, 0);
+        let mut buf: Vec<u8> = vec![0; SUPER_BLOCK_SIZE];
         buf[0] = self.version;
         buf[1] = self.replica_placement.byte();
 
@@ -113,14 +112,12 @@ impl Volume {
         ttl: TTL,
         _pre_allocate: i64,
     ) -> Result<Volume> {
-
+        debug!("new volume dir: {}, id: {}", dir, id);
         let sb = SuperBlock {
             replica_placement: replica_placement,
             ttl: ttl,
             ..Default::default()
         };
-
-
 
         // Err(box_err!("todo"))
         let mut v = Volume {
@@ -134,6 +131,7 @@ impl Volume {
         };
 
         v.load(true, true)?;
+        debug!("new volume dir: {}, id: {} load success", dir, id);
         Ok(v)
     }
 
@@ -145,10 +143,12 @@ impl Volume {
 
         let meta: Metadata;
         let name = self.data_file_name();
+        debug!("load volume: {}", name);
 
         match metadata(&name) {
             Ok(m) => meta = m,
             Err(err) => {
+                debug!("get metadata err: {}", err);
                 if err.kind() == ErrorKind::NotFound && create_if_missing {
                     // TODO suppose pre_allocate
                     fs::OpenOptions::new()
@@ -158,12 +158,13 @@ impl Volume {
                         .mode(0o644)
                         .open(&name)?;
                     meta = metadata(&name)?;
-                    self.write_super_block()?;
                 } else {
                     return Err(Error::from(err));
                 }
             }
         };
+
+        debug!("deta: {:?}", meta);
 
         if !meta.permissions().readonly() {
             let file = fs::OpenOptions::new()
@@ -185,8 +186,12 @@ impl Volume {
             self.read_only = true;
         }
 
-        self.read_super_block()?;
+        self.write_super_block()?;
 
+        self.read_super_block()?;
+        debug!("read_super_block success");
+
+        // TODO
         if load_index {}
 
         Ok(())
@@ -203,9 +208,7 @@ impl Volume {
 
 
         file.write_all(&bytes)?;
-
-
-
+        debug!("write super block success");
         Ok(())
     }
 
@@ -280,6 +283,9 @@ impl Volume {
 
     pub fn file_name(&self) -> String {
         let mut rt = self.dir.clone();
+        if !rt.ends_with("/") {
+            rt.push_str("/");
+        }
         if self.collection == "" {
             rt.push_str(&self.id.to_string())
         } else {

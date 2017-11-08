@@ -125,8 +125,8 @@ fn main() {
             NeedleMapType::NeedleMapInMemory,
             // TODO config master node
             "127.0.0.1:9334",
-            // todo
-            100,
+            // todo pulse_seconds
+            5,
             "",
             "",
             vec![],

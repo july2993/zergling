@@ -89,7 +89,7 @@ impl Clone for TTL {
 impl TTL {
     pub fn new(s: &str) -> Result<TTL> {
         if s.is_empty() {
-            return Err(ParseTTL(String::from(s)));
+            return Ok(TTL::default());
         }
 
         let bytes = s.as_bytes();
