@@ -27,6 +27,8 @@ use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
 use libflate::gzip::{Encoder, Decoder};
+use multipart_async::server::Multipart;
+use multipart_async::server::RequestExt;
 use serde_json;
 use util;
 
@@ -77,6 +79,10 @@ impl Context {
                     }
                     (&Method::Get, "/favicon.ico") => {
                         let handle = test_handler(&req);
+                        cb(handle);
+                    }
+                    (&Method::Post, "/test_multipart") => {
+                        let handle = test_multipart_handler(req);
                         cb(handle);
                     }
                     (&Method::Get, _) => {
@@ -238,12 +244,68 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     Ok(resp)
 }
 
+
+pub fn test_multipart_handler(req: hyper::server::Request) -> Result<Response> {
+    let mpart = req.into_multipart().unwrap().0;
+    debug!("test_multipart_handler start to wait..");
+    // hang for ever sometime
+    for item_res in mpart.wait() {
+        match item_res {
+            Ok(item) => {
+                debug!("{:?}", item);
+            }
+            Err(err) => {
+                debug!("{:?}", err);
+            }
+        }
+    }
+    debug!("end test_multipart_handler");
+    Ok(Response::new())
+}
+
+#[allow(dead_code)]
+pub fn parse_upload(req: hyper::server::Request) -> Result<()> {
+    // let file_name: String;
+    // let data: Vec<u8>;
+    // let mime_type: String;
+    // let mut pair_map: HashMap<String, String> = HashMap::new();
+
+    // let is_gzipped: bool;
+    // let modified_time: u64;
+    // let ttl: TTL;
+    // let is_chunked_file: bool;
+
+    let mpart = req.into_multipart().unwrap().0;
+    // mpart.and_then(|item| debug!("{:?}", item));
+    for item_res in mpart.wait() {
+        match item_res {
+            Ok(item) => {
+                debug!("{:?}", item);
+            }
+            Err(err) => {
+                debug!("{:?}", err);
+            }
+        }
+    }
+
+
+
+
+
+
+    Ok(())
+}
+
 // pub fn post_handler(ctx: &Context, req: &Request) -> Result<Response> {
 //     let (svid, _, _, _, _) = parse_url_path(req.path());
 //     let vid = svid.parse::<u32>()?;
 
 
+// let n = Needle::new()
+
 // }
+
+// fn new_needle_from_request(req: &Request) -> Result<Needle> {}
 
 pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     let params = util::get_request_params(req);

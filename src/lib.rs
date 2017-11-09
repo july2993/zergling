@@ -33,6 +33,7 @@ extern crate byteorder;
 extern crate time;
 extern crate crc;
 extern crate libflate;
+extern crate multipart_async;
 
 
 

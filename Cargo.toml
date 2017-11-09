@@ -2,6 +2,8 @@
 name = "zergling"
 version = "0.1.0"
 authors = ["Jiahao Huang <july2993@gmail.com>"]
+description = "a object storage system like haystack"
+license = "MIT/Apache-2.0"
 
 [features]
 default = []
@@ -31,6 +33,12 @@ byteorder = "1.1"
 time = "0.1"
 crc = "1.5"
 libflate = "0.1"
+
+[dependencies.multipart-async]
+version = "0.0"
+git = "https://github.com/abonander/multipart-async.git"
+
+
 
 
 
