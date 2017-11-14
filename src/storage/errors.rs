@@ -3,6 +3,7 @@ use std::error;
 use serde_json;
 use std;
 use grpcio;
+use operation;
 
 
 quick_error! {
@@ -20,6 +21,11 @@ quick_error! {
             display("{:?}", err)
             description(err.description())
         }
+        String(s: String) {
+            from()
+            description(s)
+            display("{:?}", s)
+        }
         ParseIntError(err: std::num::ParseIntError) {
             from()
             cause(err)
@@ -33,6 +39,12 @@ quick_error! {
             description(err.description())
         }
         SerdeJsonError(err: serde_json::Error) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
+        }
+        Operation(err: operation::Error) {
             from()
             cause(err)
             display("{:?}", err)

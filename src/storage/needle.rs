@@ -31,10 +31,10 @@ pub const FLAG_HAS_TTL: u8 = 0x10;
 pub const FLAG_HAS_PAIRS: u8 = 0x20;
 pub const FLAG_IS_CHUNK_MANIFEST: u8 = 0x80;
 
-pub const LAST_MODIFIED_BYTES_LENGTH: usize = 5;
+pub const LAST_MODIFIED_BYTES_LENGTH: usize = 8;
 pub const TTL_BYTES_LENGTH: usize = 2;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Needle {
     pub cookie: u32,
     pub id: u64,
@@ -59,7 +59,7 @@ pub struct Needle {
 
 fn get_actual_size(size: u32) -> u64 {
     let padding: u64;
-    let left = (NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
+    let left = (NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE as u32;
     if left > 0 {
         padding = NEEDLE_PADDING_SIZE as u64 - left as u64;
     } else {
@@ -91,6 +91,8 @@ impl Needle {
             return Err(box_err!("invalid fid: {}", fid));
         }
 
+        debug!("parse_pat fid: {}", fid);
+
         let id: &str;
         let delta: &str;
         if let Some(idx) = fid.find("_") {
@@ -101,6 +103,8 @@ impl Needle {
             delta = &fid[0..0];
         }
 
+        debug!("parse_pat id: {} delta: {}", id, delta);
+
         let ret = parse_key_hash(id)?;
         self.id = ret.0;
         self.cookie = ret.1;
@@ -108,6 +112,8 @@ impl Needle {
             let idelta: u64 = delta.parse()?;
             self.id += idelta;
         }
+
+        debug!("parse result id: {}, cookie: {}", self.id, self.cookie);
 
         Ok(())
     }
@@ -164,6 +170,96 @@ impl Needle {
 
     }
 
+    pub fn append<W: std::io::Write>(&mut self, w: &mut W, version: Version) -> Result<(u32, u64)> {
+        if version != super::CURRENT_VERSION {
+            return Err(box_err!("no supported version"));
+        }
+
+        let mut bytes: Vec<u8> = vec![];
+        bytes.write_u32::<BigEndian>(self.cookie).unwrap();
+        bytes.write_u64::<BigEndian>(self.id).unwrap();
+
+        self.data_size = self.data.len() as u32;
+        self.name_size = self.name.len() as u8;
+        self.mime_size = self.mime.len() as u8;
+
+        if self.data_size > 0 {
+            self.data_size = 4 + self.data_size + 1; // one for flag;
+            if self.has_name() {
+                self.size += 1 + self.name_size as u32;
+            }
+            if self.has_mime() {
+                self.size += 1 + self.mime_size as u32;
+            }
+            if self.has_last_modified_date() {
+                self.size += 1 + LAST_MODIFIED_BYTES_LENGTH as u32;
+            }
+            if self.has_ttl() {
+                self.size += TTL_BYTES_LENGTH as u32;
+            }
+            if self.has_pairs() {
+                self.size += self.pairs_size as u32;
+            }
+        } else {
+            self.size = 0
+        }
+
+        bytes.write_u32::<BigEndian>(self.size).unwrap();
+        w.write_all(&bytes)?;
+        bytes.clear();
+
+        if self.data_size > 0 {
+            bytes.write_u32::<BigEndian>(self.data_size).unwrap();
+            w.write_all(&bytes)?;
+            bytes.clear();
+
+            w.write_all(&self.data)?;
+
+            w.write_all(&vec![self.flags])?;
+
+            if self.has_name() {
+                w.write_all(&vec![self.name_size])?;
+                w.write_all(&self.name)?;
+            }
+
+            if self.has_mime() {
+                w.write_all(&vec![self.mime_size])?;
+                w.write_all(&self.mime)?;
+            }
+            if self.has_last_modified_date() {
+                bytes.write_u64::<BigEndian>(self.last_modified).unwrap();
+                w.write_all(&bytes)?;
+                bytes.clear();
+            }
+
+            if self.has_ttl() {
+                w.write_all(&self.ttl.bytes())?;
+            }
+
+            // not supporst
+            if self.has_pairs() {
+                panic!("not suppose");
+            }
+        }
+
+        let mut padding = 0;
+        if NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE % NEEDLE_PADDING_SIZE != 0 {
+            padding = NEEDLE_PADDING_SIZE -
+                (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
+        }
+
+        bytes.write_u32::<BigEndian>(self.checksum).unwrap();
+        w.write_all(&bytes)?;
+        bytes.clear();
+
+        w.write_all(&vec![0; padding as usize])?;
+
+
+
+        Ok((self.data_size, get_actual_size(self.size)))
+
+    }
+
     //
     pub fn read_date(
         &mut self,
@@ -207,14 +303,26 @@ impl Needle {
     pub fn has_ttl(&self) -> bool {
         self.flags | FLAG_HAS_TTL > 0
     }
+    pub fn set_has_ttl(&mut self) {
+        self.flags |= FLAG_HAS_TTL
+    }
     pub fn has_name(&self) -> bool {
         self.flags | FLAG_HAS_NAME > 0
+    }
+    pub fn set_name(&mut self) {
+        self.flags |= FLAG_HAS_NAME
     }
     pub fn has_mime(&self) -> bool {
         self.flags | FLAG_HAS_MIME > 0
     }
+    pub fn set_has_mime(&mut self) {
+        self.flags |= FLAG_HAS_MIME
+    }
     pub fn is_gzipped(&self) -> bool {
         self.flags | FLAG_GZIP > 0
+    }
+    pub fn set_gzipped(&mut self) {
+        self.flags |= FLAG_GZIP
     }
     pub fn has_pairs(&self) -> bool {
         self.flags | FLAG_HAS_PAIRS > 0
@@ -224,8 +332,20 @@ impl Needle {
         self.flags | FLAG_HAS_LAST_MODIFIED_DATE > 0
     }
 
+    pub fn set_has_last_modified_date(&mut self) {
+        self.flags |= FLAG_HAS_LAST_MODIFIED_DATE
+    }
+
+    pub fn set_is_chunk_manifest(&mut self) {
+        self.flags |= FLAG_IS_CHUNK_MANIFEST
+    }
+
+    pub fn is_chunk_manifest(&self) -> bool {
+        self.flags | FLAG_IS_CHUNK_MANIFEST > 0
+    }
+
     pub fn etag(&self) -> String {
-        let mut buf: Vec<u8> = vec![0, 4];
+        let mut buf: Vec<u8> = vec![0; 4];
         {
             let mut r = &mut buf[0..4];
             r.write_u32::<BigEndian>(self.checksum).unwrap();
@@ -242,8 +362,8 @@ fn parse_key_hash(hash: &str) -> Result<(u64, u32)> {
 
     let key_end = hash.len() - 8;
 
-    let key: u64 = hash[0..key_end].parse()?;
-    let cookie: u32 = hash[key_end..].parse()?;
+    let key: u64 = u64::from_str_radix(&hash[0..key_end], 16)?;
+    let cookie: u32 = u32::from_str_radix(&hash[key_end..], 16)?;
 
     Ok((key, cookie))
 }

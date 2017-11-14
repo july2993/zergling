@@ -34,6 +34,9 @@ extern crate time;
 extern crate crc;
 extern crate libflate;
 extern crate multipart_async;
+extern crate multipart;
+extern crate mime_guess;
+extern crate lru;
 
 
 

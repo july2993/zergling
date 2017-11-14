@@ -96,7 +96,7 @@ impl Store {
         return Err(box_err!("volume {} not found", vid));
     }
 
-    pub fn write_volume_needle(&mut self, vid: VolumeId, n: &Needle) -> Result<u32> {
+    pub fn write_volume_needle(&mut self, vid: VolumeId, n: &mut Needle) -> Result<u32> {
         if let Some(v) = self.find_volume_mut(vid) {
             if v.read_only {
                 return Err(box_err!("volume {} is read only", vid));

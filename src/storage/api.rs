@@ -5,8 +5,11 @@ use futures::future::Future;
 use futures::sync::oneshot;
 use hyper::header::ContentLength;
 use hyper::header;
+use crc::crc32;
+use operation;
+use hyper::mime;
 use std::collections::HashMap;
-use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate};
+use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType};
 use hyper::{StatusCode, Method};
 use hyper::server::{Request, Response, Service};
 use std::time::{SystemTime, Duration};
@@ -15,22 +18,26 @@ use grpcio::*;
 use futures::*;
 use pb;
 use std::ops::Add;
+use storage;
 use url::Url;
 use super::{Store, NeedleMapType};
 use std;
 use std::time;
 use std::error::Error;
-use storage::{Result, VolumeInfo, Needle};
+use storage::{Result, VolumeInfo, Needle, TTL, VolumeId};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
 use libflate::gzip::{Encoder, Decoder};
-use multipart_async::server::Multipart;
-use multipart_async::server::RequestExt;
+use multipart_async::server::{Multipart, RequestExt};
+use multipart;
+use multipart::server::MultipartData;
 use serde_json;
 use util;
+use mime_guess;
+use operation::Looker;
 
 const PHRASE: &'static str = "Hello, World!";
 pub type APICallback = Box<FnBox(Result<Response>) + Send>;
@@ -53,6 +60,7 @@ pub struct Context {
     pub read_redirect: bool,
     pub pulse_seconds: u64,
     pub master_node: String,
+    pub looker: Arc<Mutex<Looker>>,
 }
 
 impl Context {
@@ -62,6 +70,10 @@ impl Context {
         }
 
         panic!("receiver hung up");
+    }
+
+    pub fn get_master_node(&self) -> String {
+        return self.master_node.clone();
     }
 
     fn handle_msg(&mut self, msg: Msg) {
@@ -85,12 +97,20 @@ impl Context {
                         let handle = test_multipart_handler(req);
                         cb(handle);
                     }
+                    (&Method::Post, "/test_echo") => {
+                        let handle = test_echo(req);
+                        cb(handle);
+                    }
                     (&Method::Get, _) => {
                         let handle = get_or_head_handler(self, &req);
                         cb(handle);
                     }
                     (&Method::Head, _) => {
                         let handle = get_or_head_handler(self, &req);
+                        cb(handle);
+                    }
+                    (&Method::Post, _) => {
+                        let handle = post_handler(self, req);
                         cb(handle);
                     }
                     (_, _) => {
@@ -100,7 +120,6 @@ impl Context {
                 }
             }
         }
-
     }
 
     pub fn heartbeat(&self) {
@@ -244,68 +263,248 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     Ok(resp)
 }
 
-
-pub fn test_multipart_handler(req: hyper::server::Request) -> Result<Response> {
-    let mpart = req.into_multipart().unwrap().0;
-    debug!("test_multipart_handler start to wait..");
-    // hang for ever sometime
-    for item_res in mpart.wait() {
+fn read_req_body_full(body: hyper::Body) -> Result<Vec<u8>> {
+    let mut data: Vec<u8> = vec![];
+    for item_res in body.wait() {
         match item_res {
             Ok(item) => {
-                debug!("{:?}", item);
+                // debug!("{:?}", item);
+                for u in item {
+                    data.push(u);
+                }
             }
             Err(err) => {
                 debug!("{:?}", err);
             }
         }
     }
-    debug!("end test_multipart_handler");
+
+    Ok(data)
+}
+
+pub fn test_echo(req: hyper::server::Request) -> Result<Response> {
+    let data = read_req_body_full(req.body())?;
+
+    let resp = Response::new()
+        .with_header(ContentLength(data.len() as u64))
+        .with_body(data);
+    Ok(resp)
+}
+
+pub fn get_boundary(req: &Request) -> Result<String> {
+    if *req.method() != Method::Post {
+        return Err(box_err!("parse multipart err: no post reqest"));
+    }
+
+    let ct = match req.headers().get::<ContentType>() {
+        Some(_ct) => _ct,
+        None => return Err(box_err!("no ContentType header")),
+    };
+
+    match ct.get_param("boundary") {
+        Some(bd) => return Ok(bd.to_string()),
+        None => return Err(box_err!("no boundary")),
+    };
+}
+
+pub fn test_multipart_handler(req: hyper::server::Request) -> Result<Response> {
+    let boundary = get_boundary(&req)?;
+    let data = read_req_body_full(req.body())?;
+    let mut mpart = multipart::server::Multipart::with_body(&data[..], boundary);
+
+    while let Ok(Some(field)) = mpart.read_entry() {
+        debug!("field name: {}", field.name);
+    }
+
     Ok(Response::new())
 }
 
+pub struct ParseUploadResp {
+    pub file_name: String,
+    pub data: Vec<u8>,
+    pub mime_type: String,
+    pub pair_map: HashMap<String, String>,
+    pub modified_time: u64,
+    pub ttl: TTL,
+    pub is_chunked_file: bool,
+}
+
 #[allow(dead_code)]
-pub fn parse_upload(req: hyper::server::Request) -> Result<()> {
-    // let file_name: String;
-    // let data: Vec<u8>;
-    // let mime_type: String;
-    // let mut pair_map: HashMap<String, String> = HashMap::new();
+pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
+    let params = util::get_request_params(&req);
 
-    // let is_gzipped: bool;
-    // let modified_time: u64;
-    // let ttl: TTL;
-    // let is_chunked_file: bool;
+    let mut file_name = String::new();
+    let mut data: Vec<u8> = vec![];
+    let mut mime_type = String::new();
+    let pair_map: HashMap<String, String> = HashMap::new();
 
-    let mpart = req.into_multipart().unwrap().0;
-    // mpart.and_then(|item| debug!("{:?}", item));
-    for item_res in mpart.wait() {
-        match item_res {
-            Ok(item) => {
-                debug!("{:?}", item);
+    let modified_time: u64;
+    let ttl: TTL;
+    let is_chunked_file: bool;
+    //
+    //
+    // TODO parse custom pairs header
+
+    let boundary = get_boundary(&req)?;
+    let body_data = read_req_body_full(req.body())?;
+    let mut mpart = multipart::server::Multipart::with_body(&body_data[..], boundary);
+
+    // get first file with file_name
+    let mut post_mtype = String::new();
+    while let Ok(Some(field)) = mpart.read_entry() {
+        debug!("field name: {}", field.name);
+        match field.data {
+            MultipartData::File(mut file) => {
+                if file.filename.is_some() {
+                    file_name = file.filename.clone().unwrap();
+                }
+                #[allow(deprecated)] post_mtype.push_str(file.content_type().0.as_str());
+                post_mtype.push_str("/");
+                #[allow(deprecated)] post_mtype.push_str(file.content_type().1.as_str());
+                // file.content_type().TopLevel.as_str()
+                data.clear();
+                file.read_to_end(&mut data)?;
             }
-            Err(err) => {
-                debug!("{:?}", err);
-            }
+            MultipartData::Text(_text) => {}
+        }
+
+        if file_name.len() > 0 {
+            break;
         }
     }
 
+    is_chunked_file = util::parse_bool(params.get("cm").unwrap_or(&"false".to_string()))
+        .unwrap_or(false);
+
+    let mut guess_mtype = String::new();
+    if !is_chunked_file {
+        if let Some(idx) = file_name.find(".") {
+            let ext = &file_name[idx..];
+            let m = mime_guess::get_mime_type(ext);
+            if m.0.as_str() != "application" || m.1.as_str() != "octet-stream" {
+                guess_mtype.push_str(m.0.as_str());
+                guess_mtype.push_str("/");
+                guess_mtype.push_str(m.1.as_str());
+            }
+        }
+
+        if post_mtype != "" && guess_mtype != post_mtype {
+            mime_type = post_mtype.clone(); // only return if not deductable, so my can save it only when can't deductable from file name
+            // guess_mtype = post_mtype.clone();
+        }
 
 
+        // don't auto gzip and change filename like seaweed
+    }
+
+    modified_time = params
+        .get("ts")
+        .unwrap_or(&"0".to_string())
+        .parse()
+        .unwrap_or(0);
 
 
+    ttl = match params.get("ttl") {
+        Some(s) => TTL::new(s).unwrap_or(TTL::default()),
+        None => TTL::default(),
+    };
 
-    Ok(())
+    let resp = ParseUploadResp {
+        file_name: file_name,
+        data: data,
+        mime_type: mime_type,
+        pair_map: pair_map,
+        modified_time: modified_time,
+        ttl: ttl,
+        is_chunked_file: is_chunked_file,
+    };
+
+    Ok(resp)
 }
 
-// pub fn post_handler(ctx: &Context, req: &Request) -> Result<Response> {
-//     let (svid, _, _, _, _) = parse_url_path(req.path());
-//     let vid = svid.parse::<u32>()?;
+pub fn post_handler(ctx: &mut Context, req: Request) -> Result<Response> {
+    let params = util::get_request_params(&req);
+    let (svid, _, _, _, _) = parse_url_path(req.path());
+    let vid = svid.parse::<u32>()?;
+
+    debug!("post vid: {}", vid);
+
+    let mut n = new_needle_from_request(req)?;
+
+    debug!("post needle: {:?}", n);
+
+    let size = replicate_write(ctx, &params, vid, &mut n)?;
+
+    let mut result = operation::UploadResult::default();
+
+    if n.has_name() {
+        result.name = String::from_utf8(n.name.clone()).unwrap();
+    }
+
+    result.size = size;
+
+    let s = serde_json::to_string(&result)?;
+
+    debug!("post resp: {}", s);
+
+    let response = Response::new()
+        .with_header(ContentLength(s.len() as u64))
+        .with_header(header::ETag(header::EntityTag::new(true, n.etag())))
+        .with_body(s);
+
+    Ok(response)
+}
+
+fn new_needle_from_request(req: Request) -> Result<Needle> {
+    let path: String;
+    path = req.path().to_string();
+
+    let mut resp = parse_upload(req)?;
+
+    let mut n = Needle::default();
+    if resp.file_name.len() > 0 {
+        n.name = resp.file_name.as_bytes().to_vec();
+        n.set_name();
+    }
+
+    if resp.mime_type.len() < 256 {
+        n.mime = resp.mime_type.as_bytes().to_vec();
+        n.set_has_mime();
+    }
+
+    // if resp.is_gzipped {
+    //     n.set_gzipped();
+    // }
+
+    if resp.modified_time == 0 {
+        resp.modified_time = SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+    }
+    n.last_modified = resp.modified_time;
+    n.set_has_last_modified_date();
+
+    if resp.ttl.minutes() != 0 {
+        n.ttl = resp.ttl;
+        n.set_has_ttl();
+    }
+
+    if resp.is_chunked_file {
+        n.set_is_chunk_manifest();
+    }
+
+    n.checksum = crc32::checksum_castagnoli(&n.data);
+
+    let start = path.find(",").map(|idx| idx + 1).unwrap_or(0);
+    let end = path.rfind(".").unwrap_or(path.len());
+
+    n.parse_path(&path[start..end])?;
 
 
-// let n = Needle::new()
+    Ok(n)
 
-// }
-
-// fn new_needle_from_request(req: &Request) -> Result<Needle> {}
+}
 
 pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     let params = util::get_request_params(req);
@@ -464,8 +663,9 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
     let mut is_volume_id_only = false;
 
     let parts: Vec<&str> = path.split("/").collect();
+    debug!("parse url path: {}", path);
     match parts.len() {
-        3 => {
+        4 => {
             vid = parts[1].to_string();
             fid = parts[2].to_string();
             filename = parts[3].to_string();
@@ -477,7 +677,7 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
                 .to_string_lossy()
                 .to_string();
         }
-        2 => {
+        3 => {
             filename = String::default();
 
             vid = parts[1].to_string();
@@ -515,4 +715,55 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
     };
 
     (vid, fid, filename, ext, is_volume_id_only)
+}
+
+
+fn replicate_write(
+    ctx: &mut Context,
+    params: &HashMap<String, String>,
+    // master: &str,
+    // s: &mut Store,
+    vid: VolumeId,
+    needle: &mut Needle,
+) -> Result<u32> {
+    let size: u32;
+    {
+        let mut s = ctx.store.lock().unwrap();
+        size = s.write_volume_needle(vid, needle)?;
+        if let Some(v) = params.get("type") {
+            if v == "replicate" {
+                return Ok(size);
+            }
+        }
+
+        let v = s.find_volume_mut(vid).unwrap();
+        if !v.need_to_replicate() {
+            return Ok(size);
+        }
+    }
+
+    let last_modified = needle.last_modified.to_string();
+    let mut params: Vec<(&str, &str)> = vec![];
+    params.push(("type", "replicate"));
+    if needle.last_modified > 0 {
+        params.push(("ts", &last_modified));
+    }
+
+    if needle.is_chunk_manifest() {
+        params.push(("cm", "true"));
+    }
+
+    // don't support custom header pair like seaweed
+
+    let res = ctx.looker.lock().unwrap().lookup(&vid.to_string())?;
+
+    // TODO concurrent replicate
+    for location in res.locations.iter() {
+        util::post(&location.url, &params).map_err(|e| {
+            storage::Error::String(e)
+        })?;
+    }
+
+
+    Ok(size)
 }

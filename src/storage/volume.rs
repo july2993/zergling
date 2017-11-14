@@ -8,8 +8,10 @@ use std::time::{Duration, SystemTime};
 use std::io::ErrorKind;
 use std::os::unix::fs::OpenOptionsExt;
 use std::time::UNIX_EPOCH;
+use storage::needle::NEEDLE_PADDING_SIZE;
 use std::io::SeekFrom;
 use std::io::Cursor;
+use storage::needle_value::NeedleValue;
 // use std::os::ext::fs::MetadataExt;
 // use std::os::unix::fs::MetadataExt;
 use byteorder::WriteBytesExt;
@@ -232,9 +234,49 @@ impl Volume {
     }
 
 
-    pub fn write_needle(&mut self, n: &Needle) -> Result<u32> {
-        let _ = n;
-        panic!("TODO");
+    pub fn write_needle(&mut self, n: &mut Needle) -> Result<u32> {
+        if self.read_only {
+            return Err(box_err!("{} is read-only", self.data_file_name()));
+        }
+
+        let mut offset: u64;
+        let size: u32;
+        let version = self.version();
+
+        {
+            let file = self.file_mut();
+            offset = file.seek(SeekFrom::End(0))?;
+
+            if offset % NEEDLE_PADDING_SIZE as u64 != 0 {
+                offset = offset +
+                    (NEEDLE_PADDING_SIZE as u64 - offset % NEEDLE_PADDING_SIZE as u64);
+                offset = file.seek(SeekFrom::Start(offset))?;
+            }
+
+            size = match n.append(file, version) {
+                Ok(s) => s.0,
+                Err(err) => {
+                    // TODO
+                    // truncate file
+                    return Err(err);
+                }
+            };
+        }
+
+        self.nm.set(
+            n.id,
+            NeedleValue {
+                offset: (offset / NEEDLE_PADDING_SIZE as u64) as u32,
+                size: n.size,
+            },
+        );
+
+        if self.last_modified_time < n.last_modified {
+            self.last_modified_time = n.last_modified;
+        }
+
+        Ok(size)
+
     }
 
     pub fn delete_needle(&mut self, n: &Needle) -> Result<u32> {
@@ -361,6 +403,10 @@ impl Volume {
         }
 
         false
+    }
+
+    pub fn need_to_replicate(&self) -> bool {
+        self.replica_placement.get_copy_count() > 1
     }
 
     // wait either maxDelayMinutes or 10% of ttl minutes

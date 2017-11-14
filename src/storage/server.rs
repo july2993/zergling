@@ -8,6 +8,7 @@ use std::{thread, time};
 use storage;
 use storage::Result;
 use storage::Store;
+use operation::Looker;
 use pb;
 
 use hyper::server::{Http, Request, Response, Service};
@@ -67,6 +68,9 @@ impl Server {
 
     pub fn serve(&self) {
         let (sender, receiver) = channel();
+
+        let lookup = Arc::new(Mutex::new(Looker::new(&self.master_node)));
+
         let ctx = storage::api::Context {
             sender: sender.clone(),
             store: self.store.clone(),
@@ -74,6 +78,7 @@ impl Server {
             read_redirect: self.read_redirect,
             pulse_seconds: self.pulse_seconds as u64,
             master_node: self.master_node.clone(),
+            looker: lookup.clone(),
         };
 
 
@@ -91,6 +96,7 @@ impl Server {
                 read_redirect: read_redirect,
                 pulse_seconds: pulse_seconds,
                 master_node: master_node.clone(),
+                looker: lookup.clone(),
             };
             ctx.run(receiver)
         });
