@@ -509,7 +509,6 @@ fn new_needle_from_request(req: Request) -> Result<Needle> {
 
 
     Ok(n)
-
 }
 
 pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
@@ -621,9 +620,6 @@ pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
         }
     }
 
-    // TODO support  image resize
-
-
     resp = write_response_content(params, &filename, &mtype, resp, &n.data);
 
     resp.set_status(StatusCode::Accepted);
@@ -650,9 +646,6 @@ fn write_response_content(
 
     resp
 }
-
-
-
 
 // support following format
 // http://localhost:8080/3/01637037d6/my_preferred_name.jpg
@@ -769,7 +762,6 @@ fn replicate_write(
             storage::Error::String(e)
         })?;
     }
-
 
     Ok(size)
 }

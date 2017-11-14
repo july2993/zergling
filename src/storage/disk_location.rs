@@ -2,11 +2,7 @@ use storage;
 use std::collections::HashMap;
 use std::fs::{self, DirEntry};
 use std::path::Path;
-
-
 use storage::{VolumeId, Volume, NeedleMapType, Result, ReplicaPlacement, TTL};
-
-
 
 
 pub struct DiskLocation {
@@ -34,8 +30,9 @@ impl DiskLocation {
     }
 
 
+    // return (vid, collection)
     pub fn volume_id_from_path(&self, p: &Path) -> Result<(VolumeId, String)> {
-        if p.is_dir() || !p.ends_with(".dat") {
+        if p.is_dir() || p.extension().unwrap_or_default() != "dat" {
             return Err(box_err!("not valid file: {}", p.to_str().unwrap()));
         }
 
@@ -60,11 +57,15 @@ impl DiskLocation {
         // TODO concurrent load volumes
         // self.concurrent_loading_volumes(needle_map_kind, true);
         let dir = Path::new(&self.directory);
+        debug!("load_existing_volumes dir: {}", self.directory);
         for entry in fs::read_dir(dir)? {
             let file = entry?.path();
             let fpath = file.as_path();
 
-            if fpath.ends_with(".dat") {
+            debug!("get file: {:?}", fpath);
+
+            if fpath.extension().unwrap_or_default() == "dat" {
+                debug!("load volume for dat file {:?}", fpath);
                 match self.volume_id_from_path(fpath) {
                     Ok((vid, collection)) => {
                         if self.volumes.get(&vid).is_some() {
@@ -81,6 +82,7 @@ impl DiskLocation {
                         );
                         match vr {
                             Ok(v) => {
+                                info!("add volume: {}", vid);
                                 self.volumes.insert(vid, v);
                             }
                             Err(err) => {
