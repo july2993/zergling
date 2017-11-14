@@ -1,5 +1,5 @@
-#![cfg_attr(feature="clippy", feature(plugin))]
-#![cfg_attr(feature="clippy", plugin(clippy))]
+#![feature(plugin)]
+#![cfg_attr(feature = "dev", plugin(clippy))]
 
 #![allow(unused_mut)]
 #![allow(unused_imports)]

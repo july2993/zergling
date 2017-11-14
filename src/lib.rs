@@ -6,8 +6,8 @@
 // #![cfg_attr(test, feature(test))]
 #![feature(fnbox)]
 
-#![cfg_attr(feature="clippy", feature(plugin))]
-#![cfg_attr(feature="clippy", plugin(clippy))]
+#![cfg_attr(feature = "dev", feature(plugin))]
+#![cfg_attr(feature = "dev", plugin(clippy))]
 
 extern crate protobuf;
 extern crate grpcio;
@@ -33,14 +33,9 @@ extern crate byteorder;
 extern crate time;
 extern crate crc;
 extern crate libflate;
-extern crate multipart_async;
 extern crate multipart;
 extern crate mime_guess;
 extern crate lru;
-
-
-
-
 
 pub mod directory;
 #[macro_use]

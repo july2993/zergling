@@ -31,7 +31,6 @@ use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
 use libflate::gzip::{Encoder, Decoder};
-use multipart_async::server::{Multipart, RequestExt};
 use multipart;
 use multipart::server::MultipartData;
 use serde_json;
