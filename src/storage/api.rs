@@ -436,7 +436,7 @@ pub fn post_handler(ctx: &mut Context, req: Request) -> Result<Response> {
 
     let mut n = new_needle_from_request(req)?;
 
-    debug!("post needle: {:?}", n);
+    debug!("post needle: {}", n);
 
     let size = replicate_write(ctx, &params, vid, &mut n)?;
 
@@ -468,6 +468,8 @@ fn new_needle_from_request(req: Request) -> Result<Needle> {
     debug!("parse_upload: {}", resp);
 
     let mut n = Needle::default();
+    n.data = resp.data;
+
     if resp.file_name.len() > 0 {
         n.name = resp.file_name.as_bytes().to_vec();
         n.set_name();

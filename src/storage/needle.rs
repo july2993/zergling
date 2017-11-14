@@ -10,9 +10,8 @@ use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 use crc::crc32;
 use std::io::SeekFrom;
+use std::fmt::{self, Debug, Display, Formatter};
 use byteorder::WriteBytesExt;
-
-
 
 
 pub const NEEDLE_HEADER_SIZE: u32 = 16;
@@ -55,6 +54,19 @@ pub struct Needle {
 
     pub checksum: u32,
     pub padding: Vec<u8>,
+}
+
+impl Display for Needle {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "id: {}, cookie: {} size: {}, data_len: {}",
+            self.id,
+            self.cookie,
+            self.size,
+            self.data.len()
+        )
+    }
 }
 
 fn get_actual_size(size: u32) -> u64 {
