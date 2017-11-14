@@ -3,6 +3,7 @@ use std::error;
 use serde_json;
 use std;
 use grpcio;
+use util;
 use operation;
 
 
@@ -45,6 +46,12 @@ quick_error! {
             description(err.description())
         }
         Operation(err: operation::Error) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
+        }
+        Util(err: util::Error) {
             from()
             cause(err)
             display("{:?}", err)

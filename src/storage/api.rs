@@ -4,6 +4,7 @@ use futures::future;
 use futures::future::Future;
 use futures::sync::oneshot;
 use hyper::header::ContentLength;
+use std::fmt::{self, Debug, Display, Formatter};
 use hyper::header;
 use crc::crc32;
 use operation;
@@ -192,8 +193,9 @@ impl Service for Context {
                 Ok(resp) => resp,
                 Err(err) => {
                     debug!("err: {:?}", err);
-                    let s = format!("{{\"Error\": {}}}", err.description());
+                    let s = format!("{{\"error\": {}}}", err.description());
                     Response::new()
+                        .with_status(StatusCode::NotAcceptable)
                         .with_header(ContentLength(s.len() as u64))
                         .with_body(s)
                 }
@@ -221,10 +223,10 @@ fn status_handler(ctx: &Context, _req: &Request) -> Result<Response> {
         }
     }
 
-    let volumes = serde_json::to_string(&infos)?;
+    // let volumes = serde_json::to_string(&infos)?;
     let stat = json!({
         "Version": "0.1",
-        "Volumes": volumes,
+        "Volumes": &infos,
     });
 
     let ret = stat.to_string();
@@ -255,9 +257,8 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     )?;
 
 
-    let mut resp = Response::new();
+    let resp = util::json_response(StatusCode::Accepted, &json!({"error":""}))?;
 
-    resp.set_status(StatusCode::Accepted);
 
     Ok(resp)
 }
@@ -328,7 +329,12 @@ pub struct ParseUploadResp {
     pub is_chunked_file: bool,
 }
 
-#[allow(dead_code)]
+impl Display for ParseUploadResp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "file_name: {}, data_len: {}, mime_type: {}, ttl minutes: {}, is_chunked_file: {}", self.file_name, self.data.len(), self.mime_type, self.ttl.minutes(), self.is_chunked_file)
+    }
+}
+
 pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
     let params = util::get_request_params(&req);
 
@@ -459,6 +465,7 @@ fn new_needle_from_request(req: Request) -> Result<Needle> {
     path = req.path().to_string();
 
     let mut resp = parse_upload(req)?;
+    debug!("parse_upload: {}", resp);
 
     let mut n = Needle::default();
     if resp.file_name.len() > 0 {

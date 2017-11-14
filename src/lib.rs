@@ -36,6 +36,8 @@ extern crate libflate;
 extern crate multipart;
 extern crate mime_guess;
 extern crate lru;
+extern crate mime;
+extern crate serde;
 
 pub mod directory;
 #[macro_use]

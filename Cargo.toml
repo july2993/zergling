@@ -38,6 +38,7 @@ multipart = "0.13"
 mime_guess = "1.8"
 lru = "0.1"
 clippy = {version = "*", optional = true}
+mime = "0.3"
 
 
 

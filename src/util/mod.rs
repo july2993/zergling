@@ -6,10 +6,15 @@ pub mod errors;
 
 
 pub use self::post::post;
-pub use self::errors::Result;
-use hyper::server::Request;
+pub use self::errors::{Result, Error};
+use hyper::server::{Request, Response};
+use hyper;
+use hyper::header;
 use url::Url;
+use serde;
+use serde_json;
 use std::collections::HashMap;
+use mime;
 
 pub fn get_request_params(req: &Request) -> HashMap<String, String> {
     // need base or will parse err
@@ -40,4 +45,22 @@ pub fn parse_bool(s: &str) -> Result<bool> {
         "False" => Ok(false), 
         _ => Err(box_err!("no valid boolean value: {}", s)),
     }
+}
+
+
+pub fn json_response<J: serde::ser::Serialize>(
+    status: hyper::StatusCode,
+    to_j: &J,
+) -> Result<Response> {
+
+    let j = serde_json::to_string(to_j)?;
+
+    let resp = Response::new()
+        .with_status(status)
+        .with_header(header::ContentType(mime::APPLICATION_JSON))
+        .with_header(header::ContentLength(j.len() as u64))
+        .with_body(j);
+
+
+    Ok(resp)
 }
