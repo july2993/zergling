@@ -1,8 +1,9 @@
 // TODO remove allow
 #![allow(dead_code)]
 
-use std::fs;
+use std::{thread, fs};
 use std::path::Path;
+use std::sync::mpsc;
 use std::fs::{File, metadata, Metadata};
 use std::time::{Duration, SystemTime};
 use std::io::ErrorKind;
@@ -29,7 +30,7 @@ use super::{VolumeId, Result, Error, Needle, NeedleMapper, NeedleValueMap, Needl
 use super::needle;
 use time;
 
-const SUPER_BLOCK_SIZE: usize = 8;
+pub const SUPER_BLOCK_SIZE: usize = 8;
 
 
 #[derive(Debug)]
@@ -87,7 +88,7 @@ impl SuperBlock {
     }
 }
 
-#[derive(Default)]
+// #[derive(Default)]
 pub struct Volume {
     pub id: VolumeId,
     pub dir: String,
@@ -101,6 +102,7 @@ pub struct Volume {
     pub last_modified_time: u64,
     pub last_compact_index_offset: u64,
     pub last_compact_revision: u16,
+    index_sender: mpsc::Sender<(u64, u32, u32)>,
 }
 
 impl Volume {
@@ -120,29 +122,72 @@ impl Volume {
             ..Default::default()
         };
 
+        let (send, recv) = mpsc::channel();
+
+
         // Err(box_err!("todo"))
         let mut v = Volume {
+            id: id,
             dir: dir.to_string(),
             collection: collection.to_string(),
-            id: id,
             super_block: sb,
             data_file: None,
             needle_map_kind: needle_map_kind,
-            ..Default::default()
+            index_sender: send,
+            nm: NeedleMapper::default(),
+            read_only: false,
+            last_compact_index_offset: 0,
+            last_compact_revision: 0,
+            last_modified_time: 0,
+            replica_placement: ReplicaPlacement::default(),
+            
+            // ..Default::default()
         };
 
         v.load(true, true)?;
+        v.spawn_index_file_writer(recv)?;
         debug!("new volume dir: {}, id: {} load success", dir, id);
         Ok(v)
     }
 
-    fn load_index() {}
+    fn spawn_index_file_writer(&self, rx: mpsc::Receiver<(u64, u32, u32)>) -> Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .append(true)
+            .open(self.index_file_name())?;
+
+        let vid = self.id;
+
+        thread::spawn(move || {
+            let mut bytes: Vec<u8> = vec![];
+            for v in rx.iter() {
+                bytes.write_u64::<BigEndian>(v.0).unwrap();
+                bytes.write_u32::<BigEndian>(v.1).unwrap();
+                bytes.write_u32::<BigEndian>(v.2).unwrap();
+
+                if bytes.len() >= 1024 {
+                    if let Ok(_) = file.write_all(&bytes) {
+                        bytes.clear();
+                    } else {
+                        warn!("write all fail, volume {} index file writer exit", vid);
+                        return;
+                    }
+                }
+
+            }
+            warn!("volume {} index file writer exit", vid);
+
+        });
+
+        Ok(())
+    }
+
 
     fn load(&mut self, create_if_missing: bool, load_index: bool) -> Result<()> {
         if self.data_file.is_some() {
             return Err(box_err!("has load!"));
         }
-
 
         let meta: Metadata;
         let name = self.data_file_name();
@@ -194,8 +239,17 @@ impl Volume {
         self.read_super_block()?;
         debug!("read_super_block success");
 
-        // TODO
-        if load_index {}
+        if load_index {
+            let mut index_file = fs::OpenOptions::new().read(true).open(
+                self.index_file_name(),
+            )?;
+
+            let mut data_file = fs::OpenOptions::new().read(true).open(
+                self.data_file_name(),
+            )?;
+
+            self.nm.load_idx_file(&mut index_file, &mut data_file)?;
+        }
 
         Ok(())
     }
@@ -234,6 +288,12 @@ impl Volume {
         Ok(())
     }
 
+    fn async_wirte_index_file(&mut self, key: u64, offset: u32, size: u32) -> Result<()> {
+        self.index_sender.send((key, offset, size)).map_err(|e| {
+            box_err!("send err: {}", e)
+        })
+    }
+
 
     pub fn write_needle(&mut self, n: &mut Needle) -> Result<u32> {
         if self.read_only {
@@ -264,13 +324,17 @@ impl Volume {
             };
         }
 
+        offset = offset / NEEDLE_PADDING_SIZE as u64;
         self.nm.set(
             n.id,
             NeedleValue {
-                offset: (offset / NEEDLE_PADDING_SIZE as u64) as u32,
+                offset: offset as u32,
                 size: n.size,
             },
         );
+
+        self.async_wirte_index_file(n.id, offset as u32, n.size)?;
+
 
         if self.last_modified_time < n.last_modified {
             self.last_modified_time = n.last_modified;

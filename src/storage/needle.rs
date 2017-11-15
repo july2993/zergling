@@ -30,6 +30,10 @@ pub const FLAG_IS_CHUNK_MANIFEST: u8 = 0x80;
 pub const LAST_MODIFIED_BYTES_LENGTH: usize = 8;
 pub const TTL_BYTES_LENGTH: usize = 2;
 
+pub const NEEDLE_FLAG_OFFSET: usize = 20;
+pub const NEEDLE_ID_OFFSET: usize = 4;
+pub const NEEDLE_SIZE_OFFSET: usize = 12;
+
 #[derive(Debug, Default)]
 pub struct Needle {
     pub cookie: u32,
@@ -68,7 +72,7 @@ impl Display for Needle {
     }
 }
 
-fn get_actual_size(size: u32) -> u64 {
+pub fn get_actual_size(size: u32) -> u64 {
     let padding: u64;
     let left = (NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE as u32;
     if left > 0 {

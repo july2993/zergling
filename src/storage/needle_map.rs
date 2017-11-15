@@ -3,8 +3,11 @@ use std::io::BufReader;
 use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::ByteOrder;
 use std::io::prelude::*;
-use storage::needle;
+use byteorder::WriteBytesExt;
+use std::io::SeekFrom;
+use storage::{needle, volume};
 
 
 use storage::{NeedleValueMap, NeedleValue, Result};
@@ -64,10 +67,10 @@ impl NeedleMapper {
         }
     }
 
-    pub fn load_idx_file(&mut self, f: &mut File, data_file: &mut File) -> Result<()> {
+    pub fn load_idx_file(&mut self, index_file: &mut File, data_file: &mut File) -> Result<()> {
         let mut last_offset = 0;
         let mut last_size = 0;
-        walk_index_file(f, |key, offset, size| -> Result<()> {
+        walk_index_file(index_file, |key, offset, size| -> Result<()> {
             if offset > last_offset {
                 last_offset = offset;
                 last_size = size;
@@ -89,13 +92,57 @@ impl NeedleMapper {
 
 
         // load the left needle has not write in index file
-        // let next_offset = needle::true_offset(last_offset) + act
-        // data_file.seek(SeekFrom(SeekFrom::Start)
+        let mut next_offset;
+        if last_offset > 0 {
+            next_offset = needle::true_offset(last_offset) + needle::get_actual_size(last_size);
+        } else {
+            next_offset = volume::SUPER_BLOCK_SIZE as u64;
+        }
 
-        // TODO
+        // TODO change magic number(change needle format, header should include flag
+        // need flag,size,id
+        let mut bytes: Vec<u8> = vec![0; 21];
+        while let Ok(_) = data_file.seek(SeekFrom::Start(next_offset)) {
+            if data_file.read_exact(&mut bytes).is_err() {
+                debug!("read exact fail");
+                break;
+            }
+
+            let key = BigEndian::read_u64(
+                &bytes[needle::NEEDLE_ID_OFFSET..needle::NEEDLE_ID_OFFSET + 8],
+            );
+            let size = BigEndian::read_u32(
+                &bytes[needle::NEEDLE_SIZE_OFFSET..needle::NEEDLE_SIZE_OFFSET + 4],
+            );
+            let flag = bytes[needle::NEEDLE_FLAG_OFFSET];
+            if flag & needle::FLAG_IS_DELETE > 0 {
+                self.delete(key);
+            } else {
+                let offset = next_offset / needle::NEEDLE_PADDING_SIZE as u64;
+                self.set(
+                    key,
+                    NeedleValue {
+                        offset: offset as u32,
+                        size: size,
+                    },
+                );
+            }
+
+            // write to index file
+            let mut buf: Vec<u8> = vec![];
+            buf.write_u64::<BigEndian>(key).unwrap();
+            if flag & needle::FLAG_IS_DELETE > 0 {
+                buf.write_u32::<BigEndian>(0).unwrap();
+            } else {
+                let offset = next_offset / needle::NEEDLE_PADDING_SIZE as u64;
+                buf.write_u32::<BigEndian>(offset as u32).unwrap();
+            }
+            buf.write_u32::<BigEndian>(size).unwrap();
+
+            next_offset += needle::get_actual_size(size);
+        }
+
         Ok(())
-
-
     }
 
     pub fn set(&mut self, key: u64, needle_value: NeedleValue) -> Option<NeedleValue> {
