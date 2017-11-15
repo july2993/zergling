@@ -26,7 +26,6 @@ use super::TTL;
 use super::{VolumeId, Result, Error, Needle, NeedleMapper, NeedleValueMap, NeedleMapType,
             VolumeInfo};
 
-use super::needle::TOMBSTONE_FILE_SIZE;
 use super::needle;
 use time;
 
@@ -290,7 +289,7 @@ impl Volume {
         let nv = self.nm.get(n.id).ok_or::<Error>(box_err!("Not Found"))?;
         debug!("read needle: {:?}", nv);
 
-        if nv.size == TOMBSTONE_FILE_SIZE {
+        if nv.offset == 0 {
             return Err(box_err!("Already Deleted"));
         }
 

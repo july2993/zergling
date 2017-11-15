@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::prelude::*;
-use storage::needle::{self, TOMBSTONE_FILE_SIZE};
+use storage::needle;
 
 
 use storage::{NeedleValueMap, NeedleValue, Result};
@@ -73,7 +73,7 @@ impl NeedleMapper {
                 last_size = size;
             }
 
-            if offset > 0 && size != TOMBSTONE_FILE_SIZE {
+            if offset > 0 {
                 self.set(
                     key,
                     NeedleValue {
