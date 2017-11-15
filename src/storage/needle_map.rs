@@ -4,7 +4,8 @@ use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::prelude::*;
-use storage::needle::TOMBSTONE_FILE_SIZE;
+use storage::needle::{self, TOMBSTONE_FILE_SIZE};
+
 
 use storage::{NeedleValueMap, NeedleValue, Result};
 use storage::needle_value_map::MemNeedleValueMap;
@@ -63,8 +64,15 @@ impl NeedleMapper {
         }
     }
 
-    pub fn load_idx_file(&mut self, f: &mut File) -> Result<()> {
+    pub fn load_idx_file(&mut self, f: &mut File, data_file: &mut File) -> Result<()> {
+        let mut last_offset = 0;
+        let mut last_size = 0;
         walk_index_file(f, |key, offset, size| -> Result<()> {
+            if offset > last_offset {
+                last_offset = offset;
+                last_size = size;
+            }
+
             if offset > 0 && size != TOMBSTONE_FILE_SIZE {
                 self.set(
                     key,
@@ -77,10 +85,21 @@ impl NeedleMapper {
                 self.delete(key);
             }
             Ok(())
-        })
+        })?;
+
+
+        // load the left needle has not write in index file
+        // let next_offset = needle::true_offset(last_offset) + act
+        // data_file.seek(SeekFrom(SeekFrom::Start)
+
+        // TODO
+        Ok(())
+
+
     }
 
     pub fn set(&mut self, key: u64, needle_value: NeedleValue) -> Option<NeedleValue> {
+        debug!("needle map set key: {}, {:?}", key, needle_value);
         if key > self.metric.maximum_file_key {
             self.metric.maximum_file_key = key;
         }
@@ -104,11 +123,15 @@ impl NeedleMapper {
             self.metric.deleted_byte_count += n.size as u64;
         }
 
+        debug!("needle map delete key: {} {:?}", key, old);
         old
     }
 
     pub fn get(&self, key: u64) -> Option<NeedleValue> {
-        self.nvp.get(key)
+        let rt = self.nvp.get(key);
+        debug!("needle map get key: {} {:?}", key, rt);
+
+        rt
     }
 
     pub fn destroy(&mut self) -> Result<()> {

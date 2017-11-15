@@ -509,7 +509,6 @@ fn new_needle_from_request(req: Request) -> Result<Needle> {
 
     n.parse_path(&path[start..end])?;
 
-
     Ok(n)
 }
 
@@ -623,7 +622,6 @@ pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     }
 
     resp = write_response_content(params, &filename, &mtype, resp, &n.data);
-
     resp.set_status(StatusCode::Accepted);
 
     Ok(resp)

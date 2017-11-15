@@ -13,21 +13,19 @@ use std::io::SeekFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use byteorder::WriteBytesExt;
 
-
 pub const NEEDLE_HEADER_SIZE: u32 = 16;
 pub const NEEDLE_PADDING_SIZE: u32 = 8;
 pub const NEEDLE_CHECKSUM_SIZE: u32 = 4;
 pub const MAX_POSSIBLE_VOLUME_SIZE: u64 = 4 * 1024 * 1024 * 1024 * 8;
 pub const TOMBSTONE_FILE_SIZE: u32 = std::u32::MAX;
 pub const PAIR_NAME_PREFIX: &'static str = "Zergling-";
-
-
 pub const FLAG_GZIP: u8 = 0x01;
 pub const FLAG_HAS_NAME: u8 = 0x02;
 pub const FLAG_HAS_MIME: u8 = 0x04;
 pub const FLAG_HAS_LAST_MODIFIED_DATE: u8 = 0x08;
 pub const FLAG_HAS_TTL: u8 = 0x10;
 pub const FLAG_HAS_PAIRS: u8 = 0x20;
+pub const FLAG_IS_DELETE: u8 = 0x40;
 pub const FLAG_IS_CHUNK_MANIFEST: u8 = 0x80;
 
 pub const LAST_MODIFIED_BYTES_LENGTH: usize = 8;
@@ -60,11 +58,13 @@ impl Display for Needle {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "id: {}, cookie: {} size: {}, data_len: {}",
+            "id: {}, cookie: {} size: {}, data_len: {}, has_pairs: {} flag: {}",
             self.id,
             self.cookie,
             self.size,
-            self.data.len()
+            self.data.len(),
+            self.has_pairs(),
+            self.flags,
         )
     }
 }
@@ -81,10 +81,14 @@ fn get_actual_size(size: u32) -> u64 {
     NEEDLE_HEADER_SIZE as u64 + size as u64 + NEEDLE_CHECKSUM_SIZE as u64 + padding
 }
 
+pub fn true_offset(offset: u32) -> u64 {
+    offset as u64 * NEEDLE_PADDING_SIZE as u64
+}
+
 fn read_needle_blob(file: &mut File, offset: u32, size: u32) -> Result<Vec<u8>> {
     let mut buffer: Vec<u8> = vec![];
     buffer.resize(get_actual_size(size) as usize, 0);
-    file.seek(SeekFrom::Start(offset as u64))?;
+    file.seek(SeekFrom::Start(true_offset(offset)))?;
     file.read_exact(&mut buffer)?;
 
     Ok(buffer)
@@ -196,7 +200,7 @@ impl Needle {
         self.mime_size = self.mime.len() as u8;
 
         if self.data_size > 0 {
-            self.data_size = 4 + self.data_size + 1; // one for flag;
+            self.size = 4 + self.data_size + 1; // one for flag;
             if self.has_name() {
                 self.size += 1 + self.name_size as u32;
             }
@@ -266,13 +270,9 @@ impl Needle {
 
         w.write_all(&vec![0; padding as usize])?;
 
-
-
         Ok((self.data_size, get_actual_size(self.size)))
-
     }
 
-    //
     pub fn read_date(
         &mut self,
         file: &mut File,
@@ -313,35 +313,35 @@ impl Needle {
     }
 
     pub fn has_ttl(&self) -> bool {
-        self.flags | FLAG_HAS_TTL > 0
+        self.flags & FLAG_HAS_TTL > 0
     }
     pub fn set_has_ttl(&mut self) {
         self.flags |= FLAG_HAS_TTL
     }
     pub fn has_name(&self) -> bool {
-        self.flags | FLAG_HAS_NAME > 0
+        self.flags & FLAG_HAS_NAME > 0
     }
     pub fn set_name(&mut self) {
         self.flags |= FLAG_HAS_NAME
     }
     pub fn has_mime(&self) -> bool {
-        self.flags | FLAG_HAS_MIME > 0
+        self.flags & FLAG_HAS_MIME > 0
     }
     pub fn set_has_mime(&mut self) {
         self.flags |= FLAG_HAS_MIME
     }
     pub fn is_gzipped(&self) -> bool {
-        self.flags | FLAG_GZIP > 0
+        self.flags & FLAG_GZIP > 0
     }
     pub fn set_gzipped(&mut self) {
         self.flags |= FLAG_GZIP
     }
     pub fn has_pairs(&self) -> bool {
-        self.flags | FLAG_HAS_PAIRS > 0
+        self.flags & FLAG_HAS_PAIRS > 0
     }
 
     pub fn has_last_modified_date(&self) -> bool {
-        self.flags | FLAG_HAS_LAST_MODIFIED_DATE > 0
+        self.flags & FLAG_HAS_LAST_MODIFIED_DATE > 0
     }
 
     pub fn set_has_last_modified_date(&mut self) {
@@ -353,7 +353,15 @@ impl Needle {
     }
 
     pub fn is_chunk_manifest(&self) -> bool {
-        self.flags | FLAG_IS_CHUNK_MANIFEST > 0
+        self.flags & FLAG_IS_CHUNK_MANIFEST > 0
+    }
+
+    pub fn is_delete(&self) -> bool {
+        self.flags & FLAG_IS_DELETE > 0
+    }
+
+    pub fn set_is_delete(&mut self) {
+        self.flags |= FLAG_IS_DELETE
     }
 
     pub fn etag(&self) -> String {

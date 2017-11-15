@@ -86,7 +86,7 @@ impl DiskLocation {
                                 self.volumes.insert(vid, v);
                             }
                             Err(err) => {
-                                error!("{}", err);
+                                error!("load volume {} err: {}", err, vid);
                             }
                         }
                     }

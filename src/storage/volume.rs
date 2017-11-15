@@ -137,6 +137,8 @@ impl Volume {
         Ok(v)
     }
 
+    fn load_index() {}
+
     fn load(&mut self, create_if_missing: bool, load_index: bool) -> Result<()> {
         if self.data_file.is_some() {
             return Err(box_err!("has load!"));
@@ -166,7 +168,7 @@ impl Volume {
             }
         };
 
-        debug!("deta: {:?}", meta);
+        // debug!("meta: {:?}", meta);
 
         if !meta.permissions().readonly() {
             let file = fs::OpenOptions::new()
@@ -286,6 +288,7 @@ impl Volume {
 
     pub fn read_needle(&mut self, n: &mut Needle) -> Result<u32> {
         let nv = self.nm.get(n.id).ok_or::<Error>(box_err!("Not Found"))?;
+        debug!("read needle: {:?}", nv);
 
         if nv.size == TOMBSTONE_FILE_SIZE {
             return Err(box_err!("Already Deleted"));
@@ -320,6 +323,12 @@ impl Volume {
     pub fn data_file_name(&self) -> String {
         let mut f = self.file_name();
         f.push_str(".dat");
+        f
+    }
+
+    pub fn index_file_name(&self) -> String {
+        let mut f = self.file_name();
+        f.push_str(".idx");
         f
     }
 
