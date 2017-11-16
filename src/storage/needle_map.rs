@@ -99,7 +99,7 @@ impl NeedleMapper {
             next_offset = volume::SUPER_BLOCK_SIZE as u64;
         }
 
-        // TODO change magic number(change needle format, header should include flag
+        // TODO change magic number(maybe redesign needle format, header should include flag
         // need flag,size,id
         let mut bytes: Vec<u8> = vec![0; 21];
         while let Ok(_) = data_file.seek(SeekFrom::Start(next_offset)) {

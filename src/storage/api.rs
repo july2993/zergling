@@ -1,16 +1,14 @@
 use hyper;
 use std::io::Read;
-use futures::future;
-use futures::future::Future;
+use futures::future::{self, Future};
 use futures::sync::oneshot;
-use hyper::header::ContentLength;
 use std::fmt::{self, Debug, Display, Formatter};
 use hyper::header;
 use crc::crc32;
 use operation;
 use hyper::mime;
 use std::collections::HashMap;
-use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType};
+use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType, ContentLength};
 use hyper::{StatusCode, Method};
 use hyper::server::{Request, Response, Service};
 use std::time::{SystemTime, Duration};

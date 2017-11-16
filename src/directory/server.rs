@@ -1,9 +1,4 @@
-// TODO:
-#![allow(unused_imports)]
-
-
 use std::sync::{Arc, Mutex};
-// use futures::Sink;
 use grpcio::*;
 use futures::*;
 use grpcio::Error as GError;
@@ -29,13 +24,10 @@ pub struct Server {
     pub port: u16,
     pub meta_folder: String,
     pub default_replica_placement: storage::ReplicaPlacement,
-
     pub volume_size_limit_mb: u64,
     // pub preallocate: i64,
     // pub pulse_seconds: i64,
     pub garbage_threshold: f64,
-
-    // pub topo: Topology,
     pub topo: Arc<Mutex<Topology>>,
     pub vg: Arc<Mutex<VolumeGrow>>,
 }
@@ -79,7 +71,6 @@ impl Server {
             .unwrap();
         server.start();
 
-
         let ctx = Context {
             topo: self.topo.clone(),
             vg: self.vg.clone(),
@@ -88,14 +79,12 @@ impl Server {
             port: self.port,
         };
 
-
         let mut addr_str = bind_ip.to_string();
         addr_str.push_str(":");
         addr_str.push_str(&self.port.to_string());
         let addr = addr_str.parse().unwrap();
         let server = Http::new().bind(&addr, move || Ok(ctx.clone())).unwrap();
         server.run().unwrap();
-
     }
 }
 
@@ -177,8 +166,6 @@ impl ZService for Server {
 
             })
             .flatten();
-
-        // let i: i64 = to_send;
 
         let f = sink.send_all(to_send).map(|_| {}).map_err(|e| {
             error!("failed to route chat: {:?}", e)

@@ -35,7 +35,7 @@ impl VolumeGrow {
         }
     }
 
-    // TODO: to long func...
+    // TODO: too long func...
     // will specify data_node but no data center find a wrong data center to be the
     // main data center first, then no valid data_node ???
     fn find_empty_slots(

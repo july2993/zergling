@@ -24,7 +24,6 @@ pub struct Server {
     pub store: Arc<Mutex<storage::Store>>,
 
     pub needle_map_kind: storage::NeedleMapType,
-    pub fix_jpg_orientation: bool,
     pub read_redirect: bool,
 }
 
@@ -41,7 +40,6 @@ impl Server {
         data_center: &str,
         rack: &str,
         _white_list: Vec<String>,
-        fix_jpg_orientation: bool,
         read_redirect: bool,
     ) -> Server {
         let store = storage::Store::new(ip, port, public_url, folders, max_counts, needle_map_kind);
@@ -53,7 +51,6 @@ impl Server {
             data_center: String::from(data_center),
             rack: String::from(rack),
             needle_map_kind: needle_map_kind,
-            fix_jpg_orientation: fix_jpg_orientation,
             read_redirect: read_redirect,
             store: Arc::new(Mutex::new(store)),
         };

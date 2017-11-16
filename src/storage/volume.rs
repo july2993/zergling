@@ -1,6 +1,3 @@
-// TODO remove allow
-#![allow(dead_code)]
-
 use std::{thread, fs};
 use std::path::Path;
 use std::sync::mpsc;
@@ -13,12 +10,8 @@ use storage::needle::NEEDLE_PADDING_SIZE;
 use std::io::SeekFrom;
 use std::io::Cursor;
 use storage::needle_value::NeedleValue;
-// use std::os::ext::fs::MetadataExt;
-// use std::os::unix::fs::MetadataExt;
 use byteorder::WriteBytesExt;
 use byteorder::{BigEndian, ReadBytesExt};
-// use std::io::Read;
-// use std::io::Seek;
 use std::io::prelude::*;
 
 use super::{Version, CURRENT_VERSION};
@@ -124,8 +117,6 @@ impl Volume {
 
         let (send, recv) = mpsc::channel();
 
-
-        // Err(box_err!("todo"))
         let mut v = Volume {
             id: id,
             dir: dir.to_string(),
