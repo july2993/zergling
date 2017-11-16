@@ -134,7 +134,7 @@ impl Context {
     pub fn start_heartbeat(&self) {
         let env = Arc::new(Environment::new(2));
         let channel = ChannelBuilder::new(env).connect(&self.master_node);
-        let client = pb::zergling_grpc::SeaweedClient::new(channel);
+        let client = pb::zergling_grpc::ZerglingClient::new(channel);
 
         let (mut sink, mut receiver) = client.send_heartbeat();
 

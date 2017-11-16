@@ -19,7 +19,7 @@ pub struct Store {
     pub rack: String,
     pub connected: bool,
     pub volume_size_limit: u64, // read from master
-    pub client: Option<pb::zergling_grpc::SeaweedClient>,
+    pub client: Option<pb::zergling_grpc::ZerglingClient>,
     pub needle_map_type: storage::NeedleMapType,
 }
 

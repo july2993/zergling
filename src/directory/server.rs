@@ -18,7 +18,7 @@ use hyper::server::{Http, Request, Response, Service};
 use futures::Stream;
 use super::api::*;
 use pb;
-use pb::zergling_grpc::Seaweed as ZService;
+use pb::zergling_grpc::Zergling as ZService;
 use pb::zergling::*;
 use directory::topology::VolumeGrow;
 use storage;
@@ -71,7 +71,7 @@ impl Server {
 
     pub fn serve(&self, bind_ip: &str) {
         let env = Arc::new(Environment::new(2));
-        let service = zergling_grpc::create_seaweed(self.clone());
+        let service = zergling_grpc::create_zergling(self.clone());
         let mut server = ServerBuilder::new(env)
             .register_service(service)
             .bind(bind_ip, self.port + 1)
