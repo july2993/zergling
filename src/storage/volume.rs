@@ -206,6 +206,7 @@ impl Volume {
                         .mode(0o644)
                         .open(&name)?;
                     meta = metadata(&name)?;
+                    info!("create volume {} dat file success", self.id);
                 } else {
                     return Err(Error::from(err));
                 }
@@ -240,15 +241,19 @@ impl Volume {
         debug!("read_super_block success");
 
         if load_index {
-            let mut index_file = fs::OpenOptions::new().read(true).open(
-                self.index_file_name(),
-            )?;
+            let mut index_file = fs::OpenOptions::new()
+                .read(true)
+                .create(true)
+                .write(true)
+                .open(self.index_file_name())?;
 
             let mut data_file = fs::OpenOptions::new().read(true).open(
                 self.data_file_name(),
             )?;
 
+            debug!("{} start load index file", self.index_file_name());
             self.nm.load_idx_file(&mut index_file, &mut data_file)?;
+            debug!("{} end load index file", self.index_file_name());
         }
 
         Ok(())

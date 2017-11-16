@@ -1,4 +1,3 @@
-// TODO remove allow
 #![allow(dead_code)]
 
 use super::{TTL, Result, Version};
@@ -12,6 +11,7 @@ use crc::crc32;
 use std::io::SeekFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use byteorder::WriteBytesExt;
+use byteorder::ByteOrder;
 
 pub const NEEDLE_HEADER_SIZE: u32 = 16;
 pub const NEEDLE_PADDING_SIZE: u32 = 8;
@@ -92,7 +92,10 @@ fn read_needle_blob(file: &mut File, offset: u32, size: u32) -> Result<Vec<u8>> 
     let mut buffer: Vec<u8> = vec![];
     buffer.resize(get_actual_size(size) as usize, 0);
     file.seek(SeekFrom::Start(true_offset(offset)))?;
+
+    debug!("read {} at {}", get_actual_size(size), true_offset(offset));
     file.read_exact(&mut buffer)?;
+    debug!("read success");
 
     Ok(buffer)
 }
@@ -144,6 +147,10 @@ impl Needle {
         let len = bytes.len();
 
         if idx < len {
+            self.data_size = BigEndian::read_u32(&bytes[idx..idx + 4]);
+            idx += 4;
+
+
             self.data = bytes[idx..idx + self.data_size as usize].to_vec();
             idx += self.data_size as usize;
             self.flags = bytes[idx];
@@ -186,7 +193,6 @@ impl Needle {
             self.pairs = bytes[idx..idx + self.pairs_size as usize].to_vec();
             // idx += self.pairs_size as usize;
         }
-
     }
 
     pub fn append<W: std::io::Write>(&mut self, w: &mut W, version: Version) -> Result<(u32, u64)> {
@@ -211,7 +217,7 @@ impl Needle {
                 self.size += 1 + self.mime_size as u32;
             }
             if self.has_last_modified_date() {
-                self.size += 1 + LAST_MODIFIED_BYTES_LENGTH as u32;
+                self.size += LAST_MODIFIED_BYTES_LENGTH as u32;
             }
             if self.has_ttl() {
                 self.size += TTL_BYTES_LENGTH as u32;
@@ -262,7 +268,7 @@ impl Needle {
         }
 
         let mut padding = 0;
-        if NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE % NEEDLE_PADDING_SIZE != 0 {
+        if (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE != 0 {
             padding = NEEDLE_PADDING_SIZE -
                 (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
         }
@@ -285,6 +291,13 @@ impl Needle {
     ) -> Result<()> {
         let bytes = read_needle_blob(file, offset, size)?;
         self.parse_needle_header(&bytes);
+        debug!(
+            "parse header success cookie: {}, id: {}, size: {}",
+            self.cookie,
+            self.id,
+            self.size
+        );
+
         if self.size != size {
             return Err(box_err!(
                 "file entry not found. needle {} memory {}",
@@ -309,7 +322,11 @@ impl Needle {
         let cal_checksum = crc32::checksum_castagnoli(&self.data);
 
         if self.checksum != cal_checksum {
-            return Err(box_err!("CRC error, may be data on disk corrupted"));
+            return Err(box_err!(
+                "CRC error, read: {}, calucate: {} may be data on disk corrupted",
+                self.checksum,
+                cal_checksum
+            ));
         }
 
         Ok(())

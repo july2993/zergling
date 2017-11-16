@@ -638,9 +638,7 @@ fn write_response_content(
     //TODO handle range contenttype and...
     let len = data.len() as u64;
     let resp = _resp.with_header(ContentLength(len)).with_body(
-        String::from_utf8(
-            data.clone(),
-        ).unwrap(),
+        data.clone(),
     );
 
 
