@@ -438,8 +438,7 @@ impl Volume {
         }
 
         fs::remove_file(Path::new(&self.data_file_name()))?;
-
-        self.nm.destroy()?;
+        fs::remove_file(Path::new(&self.index_file_name()))?;
 
         Ok(())
     }

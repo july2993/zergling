@@ -1,34 +1,27 @@
 #![feature(plugin)]
 #![cfg_attr(feature = "dev", plugin(clippy))]
-
 #![allow(unused_mut)]
 #![allow(unused_imports)]
 
 extern crate zergling;
-// extern crate env_logger;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
-
 extern crate clap;
 extern crate chrono;
 
 
-// use log::Level;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use env_logger::LogBuilder;
 use chrono::Local;
 use std::env;
-
-
 use zergling::storage;
 use zergling::directory::server::Server;
 use zergling::storage::Server as VServer;
 use zergling::directory::sequencer::MemorySequencer;
 use zergling::storage::NeedleMapType;
 
-
-fn main() {
+fn init_log() {
     LogBuilder::new()
         .format(|record| {
             format!(
@@ -43,10 +36,10 @@ fn main() {
         .parse(&env::var("ZERGLING_LOG").unwrap_or_default())
         .init()
         .unwrap();
+}
 
-    // #[warn(unused_must_use)]
-    // env_logger::init();
-
+fn main() {
+    init_log();
 
     debug!("this is printed by default");
     info!("this is printed by default");

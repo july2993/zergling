@@ -173,7 +173,6 @@ impl Needle {
 
 
         if idx < len && self.has_last_modified_date() {
-            // TODO not enough 8 bytes may panic?
             self.last_modified = Cursor::new(bytes[idx..idx + LAST_MODIFIED_BYTES_LENGTH].to_vec())
                 .read_u64::<BigEndian>()
                 .unwrap();

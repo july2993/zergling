@@ -1,29 +1,21 @@
-
 #![allow(unused_imports)]
 #![allow(unused_macros)]
 #![allow(unknown_lints)]
-// #![crate_type = "lib"]
-// #![cfg_attr(test, feature(test))]
 #![feature(fnbox)]
-
 #![cfg_attr(feature = "dev", feature(plugin))]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
 extern crate protobuf;
 extern crate grpcio;
-// extern crate futures_cpupool;
 extern crate iron;
 #[macro_use]
 extern crate quick_error;
 #[macro_use]
 extern crate log;
-// extern crate env_logger;
-// extern crate urlencoded;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-// extern crate serde;
 extern crate rand;
 extern crate futures;
 extern crate hyper;

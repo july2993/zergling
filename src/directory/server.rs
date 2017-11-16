@@ -6,38 +6,22 @@ use std::sync::{Arc, Mutex};
 // use futures::Sink;
 use grpcio::*;
 use futures::*;
-
 use grpcio::Error as GError;
 use pb::zergling_grpc;
-
-
-
 use super::topology::Topology;
 use super::sequencer::{Sequencer, MemorySequencer};
 use grpcio::{ClientStreamingSink, RequestStream, RpcContext, RpcStatus, RpcStatusCode, UnarySink,
              DuplexSink};
-
 use futures::future::Future;
 use hyper::header::ContentLength;
 use hyper::server::{Http, Request, Response, Service};
-
-
 use futures::Stream;
-
 use super::api::*;
-
 use pb;
 use pb::zergling_grpc::Seaweed as ZService;
 use pb::zergling::*;
 use directory::topology::VolumeGrow;
 use storage;
-
-
-// pub struct GRPCServer {
-//     pub topo: Arc<Mutex<Topology>>,
-//     pub volume_size_limit_mb: u64,
-// }
-
 
 #[derive(Clone)]
 pub struct Server {
@@ -144,7 +128,6 @@ impl ZService for Server {
                     ip = String::from_utf8(host.to_vec()).unwrap();
                 }
 
-                // TODO add configuration ip -> dc_name, rack_name
                 let mut dc_name = heartbeat.data_center;
                 let mut rack_name = heartbeat.rack;
                 if dc_name == "" {

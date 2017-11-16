@@ -181,12 +181,6 @@ impl NeedleMapper {
         rt
     }
 
-    pub fn destroy(&mut self) -> Result<()> {
-        // TODO may need rm index file
-
-
-        Ok(())
-    }
 
     pub fn file_count(&self) -> u64 {
         self.metric.file_count
