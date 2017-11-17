@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*
 //! The macros crate contains all useful needed macros.
 
 /// Get the count of macro's arguments.
@@ -26,11 +27,15 @@
 /// assert_eq!(count_args!(1, 2, 3), 3);
 /// # }
 /// ```
+*/
+
 #[macro_export]
 macro_rules! count_args {
     () => { 0 };
     ($head:expr $(, $tail:expr)*) => { 1 + count_args!($($tail),*) };
 }
+
+/*
 
 /// Initial a `HashMap` with specify key-value pairs.
 ///
@@ -55,6 +60,8 @@ macro_rules! count_args {
 /// assert_eq!(m["key2"], "value2");
 /// # }
 /// ```
+/// 
+*/
 #[macro_export]
 macro_rules! map {
     () => {
