@@ -9,13 +9,34 @@ mod common;
 
 
 #[test]
-fn upload_and_download() {
+#[ignore]
+fn upload_and_download_one_1b() {
+    do_upload_and_download(1);
+}
+
+#[test]
+#[ignore]
+fn upload_and_download_1k() {
+    do_upload_and_download(1 << 10);
+}
+
+#[test]
+fn upload_and_download_1m() {
+    do_upload_and_download(1 << 20);
+}
+
+#[test]
+#[ignore]
+fn upload_and_download_100m() {
+    do_upload_and_download(100 * (1 << 20));
+}
+
+fn do_upload_and_download(size: usize) {
     util::init_log();
     common::setup();
 
-
     let mut cli = Client::new("127.0.0.1:9333").unwrap();
-    let content: Vec<u8> = "testcontent\n".as_bytes().to_vec();
+    let content: Vec<u8> = vec![66; size];
 
     let assign = cli.assign().unwrap();
 

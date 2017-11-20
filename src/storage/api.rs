@@ -353,8 +353,8 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
     let boundary = get_boundary(&req)?;
     let body_data = read_req_body_full(req.body())?;
     debug!("body_data len: {}", body_data.len());
-    debug!("body_data :\n {}", String::from_utf8(body_data.clone().to_vec()).unwrap());
-    debug!("body_data :\n {:?}", &body_data);
+    // debug!("body_data :\n {}", String::from_utf8(body_data.clone().to_vec()).unwrap());
+    // debug!("body_data :\n {:?}", &body_data);
     let mut mpart = multipart::server::Multipart::with_body(&body_data[..], boundary);
 
     // get first file with file_name
