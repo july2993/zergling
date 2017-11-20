@@ -30,12 +30,15 @@ extern crate mime_guess;
 extern crate lru;
 extern crate mime;
 extern crate serde;
+extern crate chrono;
+extern crate env_logger;
 
 pub mod directory;
 #[macro_use]
 pub mod util;
 pub mod pb;
 pub mod storage;
+pub mod client;
 pub mod operation;
 
 #[cfg(test)]

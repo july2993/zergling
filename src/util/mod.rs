@@ -15,6 +15,9 @@ use serde;
 use serde_json;
 use std::collections::HashMap;
 use mime;
+use chrono::Local;
+use env_logger::LogBuilder;
+use std::env;
 
 pub fn get_request_params(req: &Request) -> HashMap<String, String> {
     // need base or will parse err
@@ -63,4 +66,21 @@ pub fn json_response<J: serde::ser::Serialize>(
 
 
     Ok(resp)
+}
+
+pub fn init_log() {
+    LogBuilder::new()
+        .format(|record| {
+            format!(
+                "{} [{}:{}] - {} {}",
+                Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.location().file().rsplit('/').nth(0).unwrap(),
+                record.location().line(),
+                record.level(),
+                record.args()
+            )
+        })
+        .parse(&env::var("ZERGLING_LOG").unwrap_or_default())
+        .init()
+        .unwrap();
 }
