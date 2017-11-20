@@ -6,39 +6,20 @@ extern crate zergling;
 extern crate log;
 extern crate env_logger;
 extern crate clap;
-extern crate chrono;
 
 
 use clap::{App, Arg, SubCommand};
-use env_logger::LogBuilder;
-use chrono::Local;
 use std::str::FromStr;
-use std::env;
 use zergling::storage;
 use zergling::directory::server::Server;
 use zergling::storage::Server as VServer;
 use zergling::directory::sequencer::MemorySequencer;
 use zergling::storage::NeedleMapType;
+use zergling::util;
 
-fn init_log() {
-    LogBuilder::new()
-        .format(|record| {
-            format!(
-                "{} [{}:{}] - {} {}",
-                Local::now().format("%Y-%m-%dT%H:%M:%S"),
-                record.location().file().rsplit('/').nth(0).unwrap(),
-                record.location().line(),
-                record.level(),
-                record.args()
-            )
-        })
-        .parse(&env::var("ZERGLING_LOG").unwrap_or_default())
-        .init()
-        .unwrap();
-}
 
 fn main() {
-    init_log();
+    util::init_log();
 
     debug!("this is printed by default");
     info!("this is printed by default");
