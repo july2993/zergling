@@ -6,6 +6,8 @@ extern crate zergling;
 extern crate log;
 extern crate env_logger;
 extern crate clap;
+extern crate signal;
+extern crate nix;
 
 
 use clap::{App, Arg, SubCommand};
@@ -16,6 +18,8 @@ use zergling::storage::Server as VServer;
 use zergling::directory::sequencer::MemorySequencer;
 use zergling::storage::NeedleMapType;
 use zergling::util;
+use signal::trap::Trap;
+use nix::sys::signal::{SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGTERM};
 
 
 fn main() {
@@ -136,7 +140,8 @@ fn main() {
 
         let seq = MemorySequencer::new();
 
-        let dir = Server::new(
+        let mut dir = Server::new(
+            ip_bind,
             ip,
             port,
             mdir,
@@ -146,7 +151,9 @@ fn main() {
             garbage_threshold,
             seq,
         );
-        dir.serve(ip_bind);
+        dir.start();
+        handle_signal();
+        dir.stop();
     }
 
     if let Some(_matches) = matches.subcommand_matches("volume") {
@@ -192,7 +199,7 @@ fn main() {
         let data_center = _matches.value_of("data_center").unwrap();
         let rack = _matches.value_of("rack").unwrap();
 
-        let server = VServer::new(
+        let mut server = VServer::new(
             ip,
             port,
             &public_url,
@@ -206,6 +213,25 @@ fn main() {
             vec![],
             false,
         );
-        server.serve();
+        server.start();
+        handle_signal();
+        server.stop();
     }
+
+}
+
+
+fn handle_signal() {
+    let trap = Trap::trap(&[SIGTERM, SIGINT, SIGHUP, SIGUSR1, SIGUSR2]);
+
+    for sig in trap {
+        match sig {
+            SIGTERM | SIGINT | SIGHUP => {
+                info!("receive signal {:?}, stopping server...", sig);
+                break;
+            }
+            _ => unreachable!(),
+        }
+    }
+
 }

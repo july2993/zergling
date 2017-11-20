@@ -39,6 +39,8 @@ mime_guess = "1.8"
 lru = "0.1"
 clippy = {version = "*", optional = true}
 mime = "0.3"
+signal = "0.4"
+nix = "0.9"
 
 
 

@@ -32,6 +32,8 @@ extern crate mime;
 extern crate serde;
 extern crate chrono;
 extern crate env_logger;
+extern crate signal;
+extern crate nix;
 
 pub mod directory;
 #[macro_use]

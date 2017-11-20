@@ -52,7 +52,6 @@ fn make_callback() -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Re
 
 #[derive(Clone)]
 pub struct Context {
-    pub sender: Sender<Msg>,
     pub store: Arc<Mutex<Store>>,
     pub needle_map_kind: NeedleMapType,
     pub read_redirect: bool,
@@ -61,15 +60,21 @@ pub struct Context {
     pub looker: Arc<Mutex<Looker>>,
 }
 
+#[derive(Clone)]
+pub struct HTTPContext {
+    pub sender: Sender<Msg>,
+}
+
 impl Context {
-    pub fn run(&mut self, receiver: Receiver<Msg>) -> Result<()> {
+    pub fn run(&mut self, receiver: Receiver<Msg>) {
         for msg in receiver.iter() {
             self.handle_msg(msg);
         }
 
-        panic!("receiver hung up");
+        info!("handle msg quit...");
     }
 
+    #[allow(dead_code)]
     pub fn get_master_node(&self) -> String {
         return self.master_node.clone();
     }
@@ -119,59 +124,10 @@ impl Context {
             }
         }
     }
-
-    pub fn heartbeat(&self) {
-        loop {
-            warn!("start heartbeat....");
-            self.start_heartbeat();
-            warn!("heartbeat end....");
-            thread::sleep(Duration::from_secs(self.pulse_seconds as u64));
-        }
-    }
-
-    pub fn start_heartbeat(&self) {
-        let env = Arc::new(Environment::new(2));
-        let channel = ChannelBuilder::new(env).connect(&self.master_node);
-        let client = pb::zergling_grpc::ZerglingClient::new(channel);
-
-        let (mut sink, mut receiver) = client.send_heartbeat();
-
-        let h = thread::spawn(move || loop {
-            match receiver.into_future().wait() {
-                Ok((Some(beat), r)) => {
-                    debug!("recv: {:?}", beat);
-                    receiver = r;
-                }
-                Ok((None, _)) => break,
-                Err((e, _)) => {
-                    error!("RPC failed: {:?}", e);
-                    break;
-                }
-            }
-        });
-
-        loop {
-            let beat = self.store.lock().unwrap().collect_heartbeat();
-            match sink.send((beat, WriteFlags::default())).wait() {
-                Ok(ret) => sink = ret,
-                Err(err) => {
-                    error!("send err: {}", err);
-                    break;
-                }
-            }
-
-            thread::sleep(Duration::from_secs(self.pulse_seconds as u64));
-        }
-
-        // sink.close();
-        if let Err(err) = h.join() {
-            error!("join err: {:?}", err);
-        }
-    }
 }
 
 
-impl Service for Context {
+impl Service for HTTPContext {
     type Request = Request;
     type Response = Response;
     type Error = hyper::Error;

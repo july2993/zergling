@@ -31,7 +31,8 @@ fn upload_and_download_100m() {
 
 fn do_upload_and_download(size: usize) {
     util::init_log();
-    common::setup();
+    let mut setter = common::Setter::new();
+    setter.start();
 
     let mut cli = Client::new("127.0.0.1:9333").unwrap();
     let content: Vec<u8> = vec![66; size];
@@ -53,5 +54,6 @@ fn do_upload_and_download(size: usize) {
         assign["fid"].as_str().unwrap(),
     ).unwrap();
 
+    setter.stop();
     assert_eq!(content, download);
 }
