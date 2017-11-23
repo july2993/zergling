@@ -8,20 +8,18 @@ use std::error::Error as STDError;
 use futures::future::Future;
 use futures::future;
 use futures;
-use hyper;
+use hyper::{self, StatusCode};
 use hyper::header::ContentLength;
 use hyper::server::{Request, Response, Service};
 use hyper::Method;
 use operation::ClusterStatusResult;
 use util;
-
 use serde_json;
-
 use storage;
-
 use super::topology::*;
 use directory::errors::Error;
 use directory::Result;
+use futures_cpupool::CpuPool;
 use operation::*;
 
 
@@ -33,6 +31,7 @@ pub struct Context {
     pub default_replica_placement: storage::ReplicaPlacement,
     pub ip: String,
     pub port: u16,
+    pub cpu_pool: CpuPool,
 }
 
 
@@ -71,12 +70,32 @@ impl Service for Context {
     type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Request) -> Self::Future {
-        match (req.method(), req.path()) {
+        debug!(
+            "request [{}] {} headers: {}",
+            req.method(),
+            req.path(),
+            req.headers()
+        );
+        let method = &req.method().clone();
+        let tmp = req.path().to_string();
+        let path = tmp.as_str();
+        match (method, path) {
             // seaweedfs will call this to check wheather master is alive
             (&Method::Get, "/stats") => Box::new(futures::future::ok(Response::new())),
-            (&Method::Get, "/dir/assign") => {
+            (&Method::Get, "/dir/assign") |
+            (&Method::Post, "/dir/assign") => {
                 let handle = assign_handler(&req, self);
                 let ret = future::result(map_err(handle));
+                Box::new(ret)
+            }
+            (&Method::Get, "/dir/lookup") |
+            (&Method::Post, "/dir/lookup") => {
+                let ctx = self.clone();
+                let ret = self.cpu_pool.spawn_fn(move || {
+                    let handle = lookup_handler(req, &ctx);
+                    future::result(map_err(handle))
+                    // Box::new(ret)
+                });
                 Box::new(ret)
             }
             (&Method::Get, "/cluster/status") => {
@@ -96,12 +115,14 @@ impl Service for Context {
     }
 }
 
+
+
 fn map_err(r: Result<Response>) -> std::result::Result<Response, hyper::Error> {
     match r {
         Ok(resp) => Ok(resp),
         Err(err) => {
             debug!("err: {:?}", err);
-            let s = format!("{{\"Error\": {}}}", err.description());
+            let s = format!("{{\"error\": \"{}\"}}", err.description());
             Ok(
                 Response::new()
                     .with_header(ContentLength(s.len() as u64))
@@ -114,6 +135,48 @@ fn map_err(r: Result<Response>) -> std::result::Result<Response, hyper::Error> {
 
 fn get_params(req: &Request) -> Result<HashMap<String, String>> {
     Ok(util::get_request_params(req))
+}
+
+fn lookup_handler(req: Request, ctx: &Context) -> Result<Response> {
+    let params = util::get_form_params(req);
+    let mut vid = match params.get("volumeId") {
+        Some(s) => s.clone(),
+        None => {
+            return Ok(util::error_json_response("no volumeId params"));
+        }
+    };
+
+    let idx = vid.rfind(",");
+    if idx.is_some() {
+        vid = vid[..idx.unwrap()].to_string();
+    }
+
+    let collection = params
+        .get("collection")
+        .map(|v| v.clone())
+        .unwrap_or_default();
+
+    let mut topo = ctx.topo.lock().unwrap();
+    let mut locations = vec![];
+    if let Some(nodes) = topo.lookup(collection, vid.parse::<u32>()?) {
+        for ncell in nodes.iter() {
+            // let a: u8 = ncell;
+            let n = ncell.borrow();
+            locations.push(Location {
+                url: n.url(),
+                public_url: n.public_url.clone(),
+            });
+        }
+
+        let result = LookupResult {
+            volume_id: vid,
+            locations: locations,
+            error: String::new(),
+        };
+        util::json_response(StatusCode::Accepted, &result).map_err(Error::from)
+    } else {
+        return Ok(util::error_json_response("cant't find any locations"));
+    }
 }
 
 pub fn assign_handler(req: &Request, ctx: &Context) -> Result<Response> {

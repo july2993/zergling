@@ -12,7 +12,6 @@ dev =["clippy"]
 [dependencies]
 protobuf = "1.4"
 futures         = "0.1"
-futures-cpupool = "0.1"
 grpc            = "0.*"
 iron = "0.5"
 router = "0.5"
@@ -41,6 +40,7 @@ clippy = {version = "*", optional = true}
 mime = "0.3"
 signal = "0.4"
 nix = "0.9"
+futures-cpupool = "0.1"
 
 
 

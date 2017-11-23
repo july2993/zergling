@@ -33,7 +33,7 @@ use libflate::gzip::{Encoder, Decoder};
 use multipart;
 use multipart::server::MultipartData;
 use serde_json;
-use util;
+use util::{self, read_req_body_full};
 use mime_guess;
 use operation::Looker;
 
@@ -101,7 +101,7 @@ impl Context {
                         cb(handle);
                     }
                     (&Method::Post, "/test_echo") => {
-                        let handle = test_echo(req);
+                        let handle = util::test_echo(req).map_err(storage::Error::from);
                         cb(handle);
                     }
                     (&Method::Get, _) => {
@@ -147,7 +147,7 @@ impl Service for HTTPContext {
                 Ok(resp) => resp,
                 Err(err) => {
                     debug!("err: {:?}", err);
-                    let s = format!("{{\"error\": {}}}", err.description());
+                    let s = format!("{{\"error\": \"{}\"}}", err.description());
                     Response::new()
                         .with_status(StatusCode::NotAcceptable)
                         .with_header(ContentLength(s.len() as u64))
@@ -217,33 +217,7 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     Ok(resp)
 }
 
-fn read_req_body_full(body: hyper::Body) -> Result<Vec<u8>> {
-    let mut data: Vec<u8> = vec![];
-    for item_res in body.wait() {
-        match item_res {
-            Ok(item) => {
-                // debug!("{:?}", item);
-                for u in item {
-                    data.push(u);
-                }
-            }
-            Err(err) => {
-                debug!("{:?}", err);
-            }
-        }
-    }
 
-    Ok(data)
-}
-
-pub fn test_echo(req: hyper::server::Request) -> Result<Response> {
-    let data = read_req_body_full(req.body())?;
-
-    let resp = Response::new()
-        .with_header(ContentLength(data.len() as u64))
-        .with_body(data);
-    Ok(resp)
-}
 
 pub fn get_boundary(req: &Request) -> Result<String> {
     if *req.method() != Method::Post {

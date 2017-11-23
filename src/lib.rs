@@ -34,6 +34,7 @@ extern crate chrono;
 extern crate env_logger;
 extern crate signal;
 extern crate nix;
+extern crate futures_cpupool;
 
 pub mod directory;
 #[macro_use]

@@ -34,6 +34,7 @@ pub struct DataNode {
     pub max_volume_id: VolumeId,
 }
 
+// TODO
 unsafe impl Send for DataNode {}
 
 impl fmt::Display for DataNode {

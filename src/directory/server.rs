@@ -11,6 +11,7 @@ use futures::future::Future;
 use hyper::header::ContentLength;
 use hyper::server::{Http, Request, Response, Service};
 use std::thread;
+use futures_cpupool::CpuPool;
 use futures::Stream;
 use futures::sync::oneshot;
 use super::api::*;
@@ -103,6 +104,7 @@ impl Server {
             default_replica_placement: self.default_replica_placement,
             ip: self.ip.clone(),
             port: self.port,
+            cpu_pool: CpuPool::new(4),
         };
 
         let (tx, rx) = oneshot::channel();
@@ -209,7 +211,7 @@ impl ZService for GrpcServer {
             .flatten();
 
         let f = sink.send_all(to_send).map(|_| {}).map_err(|e| {
-            error!("failed to route chat: {:?}", e)
+            error!("failed to send heartbeat response: {:?}", e)
         });
         ctx.spawn(f)
     }

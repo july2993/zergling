@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Location {
     pub url: String,
     pub public_url: String,
@@ -14,6 +15,7 @@ pub struct Location {
 
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LookupResult {
     pub volume_id: String,
     pub locations: Vec<Location>,
