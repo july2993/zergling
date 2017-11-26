@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use super::Sequencer;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemorySequencer {
     counter: Arc<Mutex<u64>>,
 }

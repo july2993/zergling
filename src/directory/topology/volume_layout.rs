@@ -13,7 +13,7 @@ use directory::errors::{Result, Error};
 use storage;
 
 
-#[derive(Debug)]
+#[derive(Clone,Debug, Serialize)]
 pub struct VolumeLayout {
     pub rp: ReplicaPlacement,
     pub ttl: Option<TTL>,
@@ -22,7 +22,7 @@ pub struct VolumeLayout {
     pub writable_volumes: Vec<VolumeId>,
     pub readonly_volumes: HashSet<VolumeId>,
     pub oversize_volumes: HashSet<VolumeId>,
-
+    #[serde(skip)]
     pub vid2location: HashMap<VolumeId, Vec<Arc<RefCell<DataNode>>>>,
 }
 

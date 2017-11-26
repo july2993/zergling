@@ -5,23 +5,45 @@ use std::cell::RefCell;
 
 use super::{DataCenter, DataNode, Collection, VolumeLayout, VolumeGrowOption};
 use directory::Result;
+use serde::Serialize;
+use serde::Serializer;
+use serde::ser::SerializeStruct;
 use storage;
 use storage::VolumeId;
 use rand;
 
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Topology {
     pub sequence: MemorySequencer,
-
     pub collection_map: HashMap<String, Collection>,
-
     pub pulse: u64,
-
     pub volume_size_limit: u64,
-
     pub data_centers: HashMap<String, Arc<RefCell<DataCenter>>>,
+}
+
+
+impl Serialize for Topology
+{
+    fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Topology", 4)?;
+        state.serialize_field("collection_map", &self.collection_map)?;
+        state.serialize_field("pulse", &self.pulse)?;
+        state.serialize_field("volume_size_limit", &self.volume_size_limit)?;
+         
+        let mut nodes = vec![];
+        for (_, n) in self.data_centers.iter() {
+            nodes.push(n.borrow().clone());
+        }
+        state.serialize_field("dataCenters", &nodes)?;
+
+        state.end()
+
+    }
 }
 
 unsafe impl Send for Topology {}

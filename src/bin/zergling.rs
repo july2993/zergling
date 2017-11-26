@@ -25,11 +25,6 @@ use nix::sys::signal::{SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGTERM};
 fn main() {
     util::init_log();
 
-    debug!("this is printed by default");
-    info!("this is printed by default");
-    warn!("this is printed by default");
-    error!("this is printed by default");
-
     let matches = App::new("zergling")
         .arg(
             Arg::with_name("ip.bind")
@@ -158,6 +153,7 @@ fn main() {
 
     if let Some(_matches) = matches.subcommand_matches("volume") {
         println!("starting volumn server....");
+        let ip_bind = _matches.value_of("ip.bind").unwrap_or("0.0.0.0");
         let ip = _matches.value_of("ip").unwrap_or("127.0.0.1");
         let pluse = _matches
             .value_of("pulse_seconds")
@@ -200,6 +196,7 @@ fn main() {
         let rack = _matches.value_of("rack").unwrap();
 
         let mut server = VServer::new(
+            ip_bind,
             ip,
             port,
             &public_url,

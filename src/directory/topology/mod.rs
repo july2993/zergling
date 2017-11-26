@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::sync::Weak;
+use serde::ser::SerializeStruct;
+use serde::{Serialize,Serializer};
 use directory::errors::{Result, Error};
 use std::fmt;
 
@@ -21,13 +23,14 @@ pub use storage::{ReplicaPlacement, TTL, VolumeId, VolumeInfo};
 
 
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct DataNode {
     pub id: String,
     pub ip: String,
     pub port: i64,
     pub public_url: String,
     pub last_seen: i64,
+    #[serde(skip)]
     pub rack: Weak<RefCell<Rack>>,
     pub volumes: HashMap<VolumeId, VolumeInfo>,
     pub max_volumes: i64,
@@ -133,14 +136,35 @@ impl DataNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone,Debug)]
 pub struct Rack {
     pub id: String,
+    // #[serde(skip)]
     pub nodes: HashMap<String, Arc<RefCell<DataNode>>>,
     pub max_volume_id: VolumeId,
-
+    // #[serde(skip)]
     pub data_center: Weak<RefCell<DataCenter>>,
 }
+
+impl Serialize for Rack
+{
+    fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Rack", 3)?;
+        state.serialize_field("id", &self.id)?;
+        let mut nodes = vec![];
+        for (_, n) in self.nodes.iter() {
+            nodes.push(n.borrow().clone());
+        }
+        state.serialize_field("nodes", &nodes)?;
+        state.serialize_field("max_volume_id", &self.max_volume_id)?;
+        state.end()
+
+    }
+}
+
 
 impl Rack {
     fn new(id: &str) -> Rack {
@@ -238,11 +262,29 @@ impl Rack {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct DataCenter {
     pub id: String,
     pub max_volume_id: VolumeId,
     pub racks: HashMap<String, Arc<RefCell<Rack>>>,
+}
+
+impl Serialize for DataCenter
+{
+    fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("DataCenter", 3)?;
+        state.serialize_field("id", &self.id)?;
+        let mut racks = vec![];
+        for (_, r) in self.racks.iter() {
+            racks.push(r.borrow().clone());
+        }
+        state.serialize_field("racks", &racks)?;
+        state.serialize_field("max_volume_id", &self.max_volume_id)?;
+        state.end()
+    }
 }
 
 impl DataCenter {

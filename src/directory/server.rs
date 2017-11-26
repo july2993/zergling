@@ -56,7 +56,7 @@ impl Server {
         seq: MemorySequencer,
     ) -> Server {
         let topo = Arc::new(Mutex::new(
-            Topology::new(seq, volume_size_limit_mb, pluse_seconds),
+            Topology::new(seq, volume_size_limit_mb*1024*1024, pluse_seconds),
         ));
 
         let env = Arc::new(Environment::new(2));

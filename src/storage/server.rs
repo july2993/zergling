@@ -16,6 +16,8 @@ use hyper::server::{Http, Request, Response, Service};
 
 
 pub struct Server {
+    ip_bind: String,
+    #[allow(dead_code)]
     ip: String,
     port: u16,
     pub master_node: String,
@@ -35,6 +37,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(
+        ip_bind: &str,
         ip: &str,
         port: u16,
         public_url: &str,
@@ -50,6 +53,7 @@ impl Server {
     ) -> Server {
         let store = storage::Store::new(ip, port, public_url, folders, max_counts, needle_map_kind);
         let server = Server {
+            ip_bind: String::from(ip_bind),
             ip: String::from(ip),
             port: port,
             master_node: String::from(master_node),
@@ -112,7 +116,7 @@ impl Server {
         let (tx, rx) = oneshot::channel();
         self.shundown = Some(tx);
 
-        let mut addr_str = self.ip.clone();
+        let mut addr_str = self.ip_bind.clone();
         addr_str.push_str(":");
         addr_str.push_str(&self.port.to_string());
         debug!("addr: {}", addr_str);

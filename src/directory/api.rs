@@ -11,6 +11,7 @@ use futures::future;
 use futures;
 use futures::sync::oneshot;
 use hyper::{self, StatusCode};
+use serde::Serialize;
 use hyper::header::ContentLength;
 use hyper::server::{Request, Response, Service};
 use hyper::Method;
@@ -122,6 +123,10 @@ impl Context {
                         let handle = lookup_handler(req, self);
                         cb(handle);
                     }
+                    (&Method::Get, "/dir/status") => {
+                        let handle = dir_status_handler(req, self);
+                        cb(handle);
+                    }
                     (&Method::Get, "/cluster/status") => {
                         let handle = culster_status_handler(&req, self);
                         cb(handle);
@@ -150,6 +155,17 @@ const PHRASE: &'static str = "Hello, World!";
 
 fn get_params(req: &Request) -> Result<HashMap<String, String>> {
     Ok(util::get_request_params(req))
+}
+
+fn dir_status_handler(_req: Request, ctx: &Context) -> Result<Response> {
+    // no clone will not impl Serialize for MutexGard***...
+    let topo = ctx.topo.lock().unwrap().clone();
+    let j = serde_json::to_string(&topo)?;
+    Ok(
+        Response::new()
+            .with_header(ContentLength(j.len() as u64))
+            .with_body(j),
+    )
 }
 
 fn lookup_handler(req: Request, ctx: &Context) -> Result<Response> {
@@ -263,7 +279,6 @@ impl Service for HTTPContext {
     type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Request) -> Self::Future {
-        let info = format!("[{}]-{}", req.method(), req.path());
         let method = req.method().clone();
         HTTP_REQ_COUNTER_VEC
             .with_label_values(&["all", method.as_ref()])
@@ -272,16 +287,10 @@ impl Service for HTTPContext {
         let timer = HTTP_REQ_HISTOGRAM_VEC
             .with_label_values(&["all", method.as_ref()])
             .start_coarse_timer();
-        // .start_timer();
-
-        if req.path() == "/favicon.ico2" {
-            return Box::new(future::ok(Response::new()));
-        }
 
         let (cb, future) = make_callback();
         self.sender.send(Msg::API { req, cb }).unwrap();
 
-        let recv_time = time::SystemTime::now();
 
         let future = future
             .map_err(|_err| {
@@ -298,16 +307,8 @@ impl Service for HTTPContext {
                         .with_header(ContentLength(s.len() as u64))
                         .with_body(s)
                 }
-            })
-            .map(move |v| {
+            }).map(move |v| {
                 timer.observe_duration();
-                let now = time::SystemTime::now();
-                let d = now.duration_since(recv_time).unwrap();
-                info!(
-                    "{} {:?}",
-                    info,
-                    d.as_secs() as f64 * 1000.0 + d.subsec_nanos() as f64 / 1000000.0
-                );
                 v
             });
         Box::new(future)

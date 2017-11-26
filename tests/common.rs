@@ -58,6 +58,7 @@ fn get_vserver() -> VServer {
     let _ = fs::create_dir(dir);
     let server = VServer::new(
         "127.0.0.1",
+        "127.0.0.1",
         8080,
         "127.0.0.1:8080",
         vec![dir.to_owned()],

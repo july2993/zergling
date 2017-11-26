@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use super::{VolumeLayout, DataNode};
 use storage::{ReplicaPlacement, TTL, VolumeId};
 
-#[derive(Debug)]
+#[derive(Clone,Debug,Serialize)]
 pub struct Collection {
     pub name: String,
     pub volume_size_limit: u64,
