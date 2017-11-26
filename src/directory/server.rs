@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::channel;
 use grpcio::*;
 use futures::*;
 use grpcio::Error as GError;
@@ -96,17 +97,24 @@ impl Server {
     }
 
     pub fn start(&mut self) {
+        let (sender, receiver) = channel();
         self.grpc_server.start();
 
-        let ctx = Context {
+        let mut ctx = Context {
             topo: self.topo.clone(),
             vg: self.vg.clone(),
             default_replica_placement: self.default_replica_placement,
             ip: self.ip.clone(),
             port: self.port,
-            cpu_pool: CpuPool::new(4),
+            cpu_pool: CpuPool::new(16),
         };
 
+        let api_handle = thread::spawn(move || { ctx.run(receiver); });
+        self.handles.push(Some(api_handle));
+
+
+        // http server
+        let http = super::api::HTTPContext { sender: sender };
         let (tx, rx) = oneshot::channel();
         self.shundown = Some(tx);
 
@@ -117,7 +125,7 @@ impl Server {
 
         // server.run().unwrap();
         let handle = thread::spawn(move || {
-            let server = Http::new().bind(&addr, move || Ok(ctx.clone())).unwrap();
+            let server = Http::new().bind(&addr, move || Ok(http.clone())).unwrap();
             server.run_until(rx.map_err(|_| ())).unwrap();
         });
 

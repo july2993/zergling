@@ -1,41 +1,38 @@
-use hyper;
-use std::io::Read;
-use futures::future::{self, Future};
-use futures::sync::oneshot;
-use std::fmt::{self, Debug, Display, Formatter};
-use hyper::header;
-use crc::crc32;
-use operation;
-use hyper::mime;
-use std::collections::HashMap;
-use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType, ContentLength};
-use hyper::{StatusCode, Method};
-use hyper::server::{Request, Response, Service};
-use std::time::{SystemTime, Duration};
-use std::thread;
-use grpcio::*;
-use futures::*;
-use pb;
-use std::ops::Add;
-use storage;
-use url::Url;
-use super::{Store, NeedleMapType};
 use std;
-use std::time;
+use std::io::Read;
+use std::fmt::{self, Debug, Display, Formatter};
+use std::collections::HashMap;
+use std::ops::Add;
 use std::error::Error;
-use storage::{Result, VolumeInfo, Needle, TTL, VolumeId};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
+use std::time::{SystemTime, Duration};
+use std::{thread, time};
+use futures::future::{self, Future};
+use futures::sync::oneshot;
+use crc::crc32;
+use operation;
+use hyper::{self, mime, header, StatusCode, Method};
+use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType, ContentLength};
+use hyper::server::{Request, Response, Service};
+use grpcio::*;
+use futures::*;
+use pb;
+use storage;
+use url::Url;
+use super::{Store, NeedleMapType};
+use storage::{Result, VolumeInfo, Needle, TTL, VolumeId};
 use libflate::gzip::{Encoder, Decoder};
 use multipart;
 use multipart::server::MultipartData;
 use serde_json;
-use util::{self, read_req_body_full};
+use util::{self, read_req_body_full, metrics_handler};
 use mime_guess;
 use operation::Looker;
+use metrics::*;
 
 const PHRASE: &'static str = "Hello, World!";
 pub type APICallback = Box<FnBox(Result<Response>) + Send>;
@@ -67,10 +64,26 @@ pub struct HTTPContext {
 
 impl Context {
     pub fn run(&mut self, receiver: Receiver<Msg>) {
-        for msg in receiver.iter() {
-            self.handle_msg(msg);
-        }
+        let alrecv = Arc::new(Mutex::new(receiver));
 
+        let mut threads = vec![];
+        for _i in 0..16 {
+            let mut ctx = self.clone();
+            let recv = alrecv.clone();
+            let t = thread::spawn(move || loop {
+                match recv.lock().unwrap().recv() {
+                    Ok(msg) => ctx.handle_msg(msg),
+                    Err(err) => {
+                        info!("recv msg err: {}", err);
+                        return;
+                    }
+                };
+            });
+            threads.push(t);
+        }
+        for t in threads {
+            t.join().unwrap();
+        }
         info!("handle msg quit...");
     }
 
@@ -83,6 +96,16 @@ impl Context {
         match msg {
             Msg::API { req, cb } => {
                 debug!("hanle msg: [{}] {}", req.method(), req.path());
+                let method = req.method().clone();
+                HTTP_REQ_COUNTER_VEC
+                    .with_label_values(&["all", method.as_ref()])
+                    .inc_by(1.0)
+                    .unwrap();
+                let timer = HTTP_REQ_HISTOGRAM_VEC
+                    .with_label_values(&["all", method.as_ref()])
+                    .start_coarse_timer();
+                // .start_timer();
+
                 match (req.method(), req.path()) {
                     (&Method::Get, "/stats") => {
                         let handle = status_handler(self, &req);
@@ -94,6 +117,10 @@ impl Context {
                     }
                     (&Method::Get, "/favicon.ico") => {
                         let handle = test_handler(&req);
+                        cb(handle);
+                    }
+                    (&Method::Get, "/metrics") => {
+                        let handle = Ok(metrics_handler(&req));
                         cb(handle);
                     }
                     (&Method::Post, "/test_multipart") => {
@@ -121,6 +148,7 @@ impl Context {
                         cb(handle);
                     }
                 }
+                timer.observe_duration();
             }
         }
     }
@@ -135,12 +163,16 @@ impl Service for HTTPContext {
     type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Request) -> Self::Future {
+        let info = format!("[{}]-{}", req.method(), req.path());
+
         let (cb, future) = make_callback();
         self.sender.send(Msg::API { req, cb }).unwrap();
 
+        let recv_time = time::SystemTime::now();
+
         let future = future
             .map_err(|_err| {
-                // TODO more specify error?
+                // _err is futures::Canceled
                 hyper::Error::Timeout
             })
             .map(|v| match v {
@@ -153,10 +185,22 @@ impl Service for HTTPContext {
                         .with_header(ContentLength(s.len() as u64))
                         .with_body(s)
                 }
+            })
+            .map(move |v| {
+                let now = time::SystemTime::now();
+                let d = now.duration_since(recv_time).unwrap();
+                info!(
+                    "{} {:?}",
+                    info,
+                    d.as_secs() as f64 * 1000.0 + d.subsec_nanos() as f64 / 1000000.0
+                );
+                v
             });
         Box::new(future)
     }
 }
+
+
 
 pub fn test_handler(_req: &Request) -> Result<Response> {
     Ok(

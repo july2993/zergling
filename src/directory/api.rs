@@ -1,13 +1,15 @@
 use std;
+use std::{thread, time};
+use std::boxed::FnBox;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, Sender};
 use std::clone::Clone;
 use std::error::Error as STDError;
-
-
 use futures::future::Future;
 use futures::future;
 use futures;
+use futures::sync::oneshot;
 use hyper::{self, StatusCode};
 use hyper::header::ContentLength;
 use hyper::server::{Request, Response, Service};
@@ -21,8 +23,21 @@ use directory::errors::Error;
 use directory::Result;
 use futures_cpupool::CpuPool;
 use operation::*;
+use metrics::*;
 
+pub type APICallback = Box<FnBox(Result<Response>) + Send>;
 
+pub enum Msg {
+    API { req: Request, cb: APICallback },
+}
+
+pub fn make_callback()
+    -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Result<Response>>)
+{
+    let (tx, rx) = oneshot::channel();
+    let callback = move |resp| { tx.send(resp).unwrap(); };
+    (Box::new(callback), rx)
+}
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -32,6 +47,11 @@ pub struct Context {
     pub ip: String,
     pub port: u16,
     pub cpu_pool: CpuPool,
+}
+
+#[derive(Clone)]
+pub struct HTTPContext {
+    pub sender: Sender<Msg>,
 }
 
 
@@ -56,81 +76,76 @@ impl Context {
 
         Ok(option)
     }
+
+    pub fn run(&mut self, receiver: Receiver<Msg>) {
+        let alrecv = Arc::new(Mutex::new(receiver));
+
+        let mut threads = vec![];
+        for _i in 0..16 {
+            let mut ctx = self.clone();
+            let recv = alrecv.clone();
+            let t = thread::spawn(move || loop {
+                match recv.lock().unwrap().recv() {
+                    Ok(msg) => ctx.handle_msg(msg),
+                    Err(err) => {
+                        info!("recv msg err: {}", err);
+                        return;
+                    }
+                };
+            });
+            threads.push(t);
+        }
+        for t in threads {
+            t.join().unwrap();
+        }
+        info!("handle msg quit...");
+    }
+
+
+    fn handle_msg(&mut self, msg: Msg) {
+        match msg {
+            Msg::API { req, cb } => {
+                debug!("hanle msg: [{}] {}", req.method(), req.path());
+                let method = req.method().clone();
+
+                let path = req.path().to_string();
+                match (&method, path.as_ref()) {
+                    // seaweedfs will call this to check wheather master is alive
+                    (&Method::Get, "/stats") => cb(Ok(Response::new())),
+                    (&Method::Get, "/dir/assign") |
+                    (&Method::Post, "/dir/assign") => {
+                        let handle = assign_handler(&req, self);
+                        cb(handle);
+                    }
+                    (&Method::Get, "/dir/lookup") |
+                    (&Method::Post, "/dir/lookup") => {
+                        let handle = lookup_handler(req, self);
+                        cb(handle);
+                    }
+                    (&Method::Get, "/cluster/status") => {
+                        let handle = culster_status_handler(&req, self);
+                        cb(handle);
+                    }
+                    (&Method::Get, "/metrics") => {
+                        let handle = Ok(util::metrics_handler(&req));
+                        cb(handle);
+                    }
+                    (method, path) => {
+                        warn!("unknow request: [{}] {}", method, path);
+                        let res = Ok(
+                            Response::new()
+                                .with_header(ContentLength(PHRASE.len() as u64))
+                                .with_body(PHRASE),
+                        );
+                        cb(res);
+                    }
+                }
+            }
+        }
+    }
 }
 
 const PHRASE: &'static str = "Hello, World!";
-
-impl Service for Context {
-    // boilerplate hooking up hyper's server types
-    type Request = Request;
-    type Response = Response;
-    type Error = hyper::Error;
-    // The future representing the eventual Response your call will
-    // resolve to. This can change to whatever Future you need.
-    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
-
-    fn call(&self, req: Request) -> Self::Future {
-        debug!(
-            "request [{}] {} headers: {}",
-            req.method(),
-            req.path(),
-            req.headers()
-        );
-        let method = &req.method().clone();
-        let tmp = req.path().to_string();
-        let path = tmp.as_str();
-        match (method, path) {
-            // seaweedfs will call this to check wheather master is alive
-            (&Method::Get, "/stats") => Box::new(futures::future::ok(Response::new())),
-            (&Method::Get, "/dir/assign") |
-            (&Method::Post, "/dir/assign") => {
-                let handle = assign_handler(&req, self);
-                let ret = future::result(map_err(handle));
-                Box::new(ret)
-            }
-            (&Method::Get, "/dir/lookup") |
-            (&Method::Post, "/dir/lookup") => {
-                let ctx = self.clone();
-                let ret = self.cpu_pool.spawn_fn(move || {
-                    let handle = lookup_handler(req, &ctx);
-                    future::result(map_err(handle))
-                    // Box::new(ret)
-                });
-                Box::new(ret)
-            }
-            (&Method::Get, "/cluster/status") => {
-                let handle = culster_status_handler(&req, self);
-                let ret = future::result(map_err(handle));
-                Box::new(ret)
-            }
-            (method, path) => {
-                warn!("unknow request: [{}] {}", method, path);
-                Box::new(futures::future::ok(
-                    Response::new()
-                        .with_header(ContentLength(PHRASE.len() as u64))
-                        .with_body(PHRASE),
-                ))
-            }
-        }
-    }
-}
-
-
-
-fn map_err(r: Result<Response>) -> std::result::Result<Response, hyper::Error> {
-    match r {
-        Ok(resp) => Ok(resp),
-        Err(err) => {
-            debug!("err: {:?}", err);
-            let s = format!("{{\"error\": \"{}\"}}", err.description());
-            Ok(
-                Response::new()
-                    .with_header(ContentLength(s.len() as u64))
-                    .with_body(s),
-            )
-        }
-    }
-}
 
 
 fn get_params(req: &Request) -> Result<HashMap<String, String>> {
@@ -238,4 +253,63 @@ pub fn culster_status_handler(_req: &Request, ctx: &Context) -> Result<Response>
             .with_header(ContentLength(j.len() as u64))
             .with_body(j),
     )
+}
+
+impl Service for HTTPContext {
+    type Request = Request;
+    type Response = Response;
+    type Error = hyper::Error;
+
+    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
+
+    fn call(&self, req: Request) -> Self::Future {
+        let info = format!("[{}]-{}", req.method(), req.path());
+        let method = req.method().clone();
+        HTTP_REQ_COUNTER_VEC
+            .with_label_values(&["all", method.as_ref()])
+            .inc_by(1.0)
+            .unwrap();
+        let timer = HTTP_REQ_HISTOGRAM_VEC
+            .with_label_values(&["all", method.as_ref()])
+            .start_coarse_timer();
+        // .start_timer();
+
+        if req.path() == "/favicon.ico2" {
+            return Box::new(future::ok(Response::new()));
+        }
+
+        let (cb, future) = make_callback();
+        self.sender.send(Msg::API { req, cb }).unwrap();
+
+        let recv_time = time::SystemTime::now();
+
+        let future = future
+            .map_err(|_err| {
+                // _err is futures::Canceled
+                hyper::Error::Timeout
+            })
+            .map(|v| match v {
+                Ok(resp) => resp,
+                Err(err) => {
+                    debug!("err: {:?}", err);
+                    let s = format!("{{\"error\": \"{}\"}}", err.description());
+                    Response::new()
+                        .with_status(StatusCode::NotAcceptable)
+                        .with_header(ContentLength(s.len() as u64))
+                        .with_body(s)
+                }
+            })
+            .map(move |v| {
+                timer.observe_duration();
+                let now = time::SystemTime::now();
+                let d = now.duration_since(recv_time).unwrap();
+                info!(
+                    "{} {:?}",
+                    info,
+                    d.as_secs() as f64 * 1000.0 + d.subsec_nanos() as f64 / 1000000.0
+                );
+                v
+            });
+        Box::new(future)
+    }
 }

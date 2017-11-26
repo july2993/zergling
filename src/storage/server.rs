@@ -108,7 +108,6 @@ impl Server {
             self.is_stop.clone(),
         );
 
-
         // http server
         let (tx, rx) = oneshot::channel();
         self.shundown = Some(tx);

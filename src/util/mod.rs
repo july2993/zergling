@@ -10,6 +10,7 @@ pub use self::errors::{Result, Error};
 use hyper::server::{Request, Response};
 use hyper;
 use hyper::header;
+use hyper::mime::Mime;
 use url::Url;
 use serde;
 use serde_json;
@@ -20,6 +21,7 @@ use futures::Stream;
 use env_logger::LogBuilder;
 use std::env;
 use std::fmt::Display;
+use prometheus::{self, Counter, Encoder, Gauge, HistogramVec, TextEncoder};
 
 pub fn get_request_params(req: &Request) -> HashMap<String, String> {
     // need base or will parse err
@@ -129,11 +131,11 @@ pub fn init_log() {
         .unwrap();
 }
 
+
 pub fn read_req_body_full(body: hyper::Body) -> Result<Vec<u8>> {
     debug!("start read body full");
     let mut data: Vec<u8> = vec![];
     for item_res in body.wait() {
-        debug!("itemp: {:?}", item_res);
         match item_res {
             Ok(item) => {
                 // debug!("{:?}", item);
@@ -158,4 +160,20 @@ pub fn test_echo(req: hyper::server::Request) -> Result<Response> {
         .with_header(hyper::header::ContentLength(data.len() as u64))
         .with_body(data);
     Ok(resp)
+}
+
+pub fn metrics_handler(_req: &Request) -> Response {
+    let encoder = TextEncoder::new();
+    let metric_familys = prometheus::gather();
+    let mut buffer = vec![];
+    encoder.encode(&metric_familys, &mut buffer).unwrap();
+
+    let mut res = Response::new();
+
+    res.headers_mut().set(header::ContentType(
+        encoder.format_type().parse::<Mime>().unwrap(),
+    ));
+    res.set_body(buffer);
+
+    res
 }
