@@ -1,5 +1,5 @@
 pub mod errors;
-pub use self::errors::{Result, Error};
+pub use self::errors::{Error, Result};
 
 use std::io::{self, Write};
 use futures::{Future, Stream};
@@ -55,7 +55,6 @@ impl Client {
                     }
                     Ok(v)
                 })
-
         })
     }
 
@@ -76,7 +75,6 @@ impl Client {
         let ct = ContentType(mime);
 
         self.post(url, ct, &data)
-
     }
 
     fn post(

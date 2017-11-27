@@ -1,6 +1,6 @@
 use lru::LruCache;
-use std::time::{SystemTime, Duration};
-use super::{Result, Error};
+use std::time::{Duration, SystemTime};
+use super::{Error, Result};
 use util;
 use serde_json;
 use std::collections::HashMap;

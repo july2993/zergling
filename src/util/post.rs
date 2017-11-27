@@ -1,5 +1,3 @@
-
-
 use url::Url;
 use std::error::Error;
 
@@ -13,18 +11,16 @@ use tokio_core::reactor::Core;
 
 
 pub fn post(url: &str, params: &Vec<(&str, &str)>) -> Result<Vec<u8>, String> {
-    let url = Url::parse_with_params(url, params).map_err(|e| {
-        String::from(e.description())
-    })?;
+    let url = Url::parse_with_params(url, params).map_err(|e| String::from(e.description()))?;
 
     let mut core = Core::new().map_err(|e| String::from(e.description()))?;
     let client = Client::new(&core.handle());
 
     let mut body: Vec<u8> = vec![];
 
-    let uri = url.into_string().parse::<hyper::Uri>().map_err(|e| {
-        String::from(e.description())
-    })?;
+    let uri = url.into_string()
+        .parse::<hyper::Uri>()
+        .map_err(|e| String::from(e.description()))?;
 
     debug!("post: {}", uri);
 

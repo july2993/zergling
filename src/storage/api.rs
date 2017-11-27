@@ -9,27 +9,27 @@ use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 use std::{thread, time};
 use futures::future::{self, Future};
 use futures::sync::oneshot;
 use crc::crc32;
 use operation;
-use hyper::{self, mime, header, StatusCode, Method};
-use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType, ContentLength};
+use hyper::{self, header, mime, Method, StatusCode};
+use hyper::header::{ContentLength, ContentType, Headers, HttpDate, IfModifiedSince, LastModified};
 use hyper::server::{Request, Response, Service};
 use grpcio::*;
 use futures::*;
 use pb;
 use storage;
 use url::Url;
-use super::{Store, NeedleMapType};
-use storage::{Result, VolumeInfo, Needle, TTL, VolumeId};
-use libflate::gzip::{Encoder, Decoder};
+use super::{NeedleMapType, Store};
+use storage::{Needle, Result, VolumeId, VolumeInfo, TTL};
+use libflate::gzip::{Decoder, Encoder};
 use multipart;
 use multipart::server::MultipartData;
 use serde_json;
-use util::{self, read_req_body_full, metrics_handler};
+use util::{self, metrics_handler, read_req_body_full};
 use mime_guess;
 use operation::Looker;
 use metrics::*;
@@ -41,9 +41,14 @@ pub enum Msg {
     API { req: Request, cb: APICallback },
 }
 
-fn make_callback() -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Result<Response>>) {
+fn make_callback() -> (
+    Box<FnBox(Result<Response>) + Send>,
+    oneshot::Receiver<Result<Response>>,
+) {
     let (tx, rx) = oneshot::channel();
-    let callback = move |resp| { tx.send(resp).unwrap(); };
+    let callback = move |resp| {
+        tx.send(resp).unwrap();
+    };
     (Box::new(callback), rx)
 }
 
@@ -70,14 +75,16 @@ impl Context {
         for _i in 0..16 {
             let mut ctx = self.clone();
             let recv = alrecv.clone();
-            let t = thread::spawn(move || loop {
-                match recv.lock().unwrap().recv() {
-                    Ok(msg) => ctx.handle_msg(msg),
-                    Err(err) => {
-                        info!("recv msg err: {}", err);
-                        return;
-                    }
-                };
+            let t = thread::spawn(move || {
+                loop {
+                    match recv.lock().unwrap().recv() {
+                        Ok(msg) => ctx.handle_msg(msg),
+                        Err(err) => {
+                            info!("recv msg err: {}", err);
+                            return;
+                        }
+                    };
+                }
             });
             threads.push(t);
         }
@@ -107,7 +114,7 @@ impl Context {
                 // .start_timer();
 
                 match (req.method(), req.path()) {
-                    (&Method::Get, "/stats") => {
+                    (&Method::Get, "/status") => {
                         let handle = status_handler(self, &req);
                         cb(handle);
                     }
@@ -305,7 +312,15 @@ pub struct ParseUploadResp {
 
 impl Display for ParseUploadResp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "file_name: {}, data_len: {}, mime_type: {}, ttl minutes: {}, is_chunked_file: {}", self.file_name, self.data.len(), self.mime_type, self.ttl.minutes(), self.is_chunked_file)
+        write!(
+            f,
+            "file_name: {}, data_len: {}, mime_type: {}, ttl minutes: {}, is_chunked_file: {}",
+            self.file_name,
+            self.data.len(),
+            self.mime_type,
+            self.ttl.minutes(),
+            self.is_chunked_file
+        )
     }
 }
 
@@ -340,9 +355,11 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
                 if file.filename.is_some() {
                     file_name = file.filename.clone().unwrap();
                 }
-                #[allow(deprecated)] post_mtype.push_str(file.content_type().0.as_str());
+                #[allow(deprecated)]
+                post_mtype.push_str(file.content_type().0.as_str());
                 post_mtype.push_str("/");
-                #[allow(deprecated)] post_mtype.push_str(file.content_type().1.as_str());
+                #[allow(deprecated)]
+                post_mtype.push_str(file.content_type().1.as_str());
                 // file.content_type().TopLevel.as_str()
                 data.clear();
                 file.read_to_end(&mut data)?;
@@ -355,8 +372,8 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
         }
     }
 
-    is_chunked_file = util::parse_bool(params.get("cm").unwrap_or(&"false".to_string()))
-        .unwrap_or(false);
+    is_chunked_file =
+        util::parse_bool(params.get("cm").unwrap_or(&"false".to_string())).unwrap_or(false);
 
     let mut guess_mtype = String::new();
     if !is_chunked_file {
@@ -372,7 +389,7 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
 
         if post_mtype != "" && guess_mtype != post_mtype {
             mime_type = post_mtype.clone(); // only return if not deductable, so my can save it only when can't deductable from file name
-            // guess_mtype = post_mtype.clone();
+                                            // guess_mtype = post_mtype.clone();
         }
 
 
@@ -517,7 +534,12 @@ pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     let count = store.read_volume_needle(vid, &mut n)?;
     debug!("read {} byte for {}", count, fid);
     if n.cookie != cookie {
-        info!("cookie not match from {:?} recv: {} file is {}", req.remote_addr(), cookie, n.cookie);
+        info!(
+            "cookie not match from {:?} recv: {} file is {}",
+            req.remote_addr(),
+            cookie,
+            n.cookie
+        );
         resp.set_status(StatusCode::NotFound);
         return Ok(resp);
     }
@@ -611,12 +633,11 @@ fn write_response_content(
     _resp: Response,
     data: &Vec<u8>,
 ) -> Response {
-
     //TODO handle range contenttype and...
     let len = data.len() as u64;
-    let resp = _resp.with_header(ContentLength(len)).with_body(
-        data.clone(),
-    );
+    let resp = _resp
+        .with_header(ContentLength(len))
+        .with_body(data.clone());
 
 
     resp
@@ -685,7 +706,6 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
 
             vid = path[1..end].to_string();
         }
-
     };
 
     (vid, fid, filename, ext, is_volume_id_only)
@@ -711,6 +731,7 @@ fn replicate_write(
         }
 
         let v = s.find_volume_mut(vid).unwrap();
+        debug!("write volume: {}", v);
         if !v.need_to_replicate() {
             return Ok(size);
         }
@@ -733,9 +754,7 @@ fn replicate_write(
 
     // TODO concurrent replicate
     for location in res.locations.iter() {
-        util::post(&location.url, &params).map_err(|e| {
-            storage::Error::String(e)
-        })?;
+        util::post(&location.url, &params).map_err(|e| storage::Error::String(e))?;
     }
 
     Ok(size)

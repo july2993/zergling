@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::cell::RefCell;
 
-use super::{DataCenter, DataNode, Collection, VolumeLayout, VolumeGrowOption};
+use super::{Collection, DataCenter, DataNode, VolumeGrowOption, VolumeLayout};
 use directory::Result;
 use serde::Serialize;
 use serde::Serializer;
@@ -24,8 +24,7 @@ pub struct Topology {
 }
 
 
-impl Serialize for Topology
-{
+impl Serialize for Topology {
     fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -34,7 +33,7 @@ impl Serialize for Topology
         state.serialize_field("collection_map", &self.collection_map)?;
         state.serialize_field("pulse", &self.pulse)?;
         state.serialize_field("volume_size_limit", &self.volume_size_limit)?;
-         
+
         let mut nodes = vec![];
         for (_, n) in self.data_centers.iter() {
             nodes.push(n.borrow().clone());
@@ -42,7 +41,6 @@ impl Serialize for Topology
         state.serialize_field("dataCenters", &nodes)?;
 
         state.end()
-
     }
 }
 
@@ -130,7 +128,6 @@ impl Topology {
         count: u64,
         option: &VolumeGrowOption,
     ) -> Result<(String, u64, Arc<RefCell<DataNode>>)> {
-
         let ret: (VolumeId, Vec<Arc<RefCell<DataNode>>>);
         {
             let layout =

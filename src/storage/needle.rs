@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::{TTL, Result, Version};
+use super::{Result, Version, TTL};
 use super::version::VERSION2;
 use std;
 use std::fs::File;
@@ -268,8 +268,8 @@ impl Needle {
 
         let mut padding = 0;
         if (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE != 0 {
-            padding = NEEDLE_PADDING_SIZE -
-                (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
+            padding = NEEDLE_PADDING_SIZE
+                - (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
         }
 
         bytes.write_u32::<BigEndian>(self.checksum).unwrap();
@@ -314,8 +314,8 @@ impl Needle {
         };
 
         self.checksum = Cursor::new(
-            &bytes[(NEEDLE_HEADER_SIZE + size) as usize..
-                       (NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) as usize],
+            &bytes[(NEEDLE_HEADER_SIZE + size) as usize
+                       ..(NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) as usize],
         ).read_u32::<BigEndian>()
             .unwrap();
         let cal_checksum = crc32::checksum_castagnoli(&self.data);

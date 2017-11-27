@@ -6,7 +6,7 @@ pub mod errors;
 
 
 pub use self::post::post;
-pub use self::errors::{Result, Error};
+pub use self::errors::{Error, Result};
 use hyper::server::{Request, Response};
 use hyper;
 use hyper::header;
@@ -70,10 +70,10 @@ pub fn parse_bool(s: &str) -> Result<bool> {
         "True" => Ok(true),
         "0" => Ok(false),
         "f" => Ok(false),
-        "F" => Ok(false), 
-        "FALSE" => Ok(false), 
-        "false" => Ok(false), 
-        "False" => Ok(false), 
+        "F" => Ok(false),
+        "FALSE" => Ok(false),
+        "false" => Ok(false),
+        "False" => Ok(false),
         _ => Err(box_err!("no valid boolean value: {}", s)),
     }
 }
@@ -101,7 +101,6 @@ pub fn json_response<J: serde::ser::Serialize>(
     status: hyper::StatusCode,
     to_j: &J,
 ) -> Result<Response> {
-
     let j = serde_json::to_string(to_j)?;
 
     let resp = Response::new()

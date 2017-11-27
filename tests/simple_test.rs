@@ -1,4 +1,3 @@
-
 extern crate zergling;
 use zergling::client::Client;
 use zergling::util;

@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::sync::Weak;
 use serde::ser::SerializeStruct;
-use serde::{Serialize,Serializer};
-use directory::errors::{Result, Error};
+use serde::{Serialize, Serializer};
+use directory::errors::{Error, Result};
 use std::fmt;
 
 use rand::random;
@@ -19,7 +19,7 @@ pub use self::collection::Collection;
 pub use self::volume_layout::VolumeLayout;
 pub use self::volume_grow::{VolumeGrow, VolumeGrowOption};
 
-pub use storage::{ReplicaPlacement, TTL, VolumeId, VolumeInfo};
+pub use storage::{ReplicaPlacement, VolumeId, VolumeInfo, TTL};
 
 
 
@@ -30,8 +30,7 @@ pub struct DataNode {
     pub port: i64,
     pub public_url: String,
     pub last_seen: i64,
-    #[serde(skip)]
-    pub rack: Weak<RefCell<Rack>>,
+    #[serde(skip)] pub rack: Weak<RefCell<Rack>>,
     pub volumes: HashMap<VolumeId, VolumeInfo>,
     pub max_volumes: i64,
     pub max_volume_id: VolumeId,
@@ -136,7 +135,7 @@ impl DataNode {
     }
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct Rack {
     pub id: String,
     // #[serde(skip)]
@@ -146,8 +145,7 @@ pub struct Rack {
     pub data_center: Weak<RefCell<DataCenter>>,
 }
 
-impl Serialize for Rack
-{
+impl Serialize for Rack {
     fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -161,7 +159,6 @@ impl Serialize for Rack
         state.serialize_field("nodes", &nodes)?;
         state.serialize_field("max_volume_id", &self.max_volume_id)?;
         state.end()
-
     }
 }
 
@@ -194,17 +191,11 @@ impl Rack {
         public_url: &str,
         max_volumes: i64,
     ) -> Arc<RefCell<DataNode>> {
-        let node = self.nodes.entry(String::from(id)).or_insert(
-            Arc::new(RefCell::new(
-                DataNode::new(
-                    id,
-                    ip,
-                    port,
-                    public_url,
-                    max_volumes,
-                ),
-            )),
-        );
+        let node = self.nodes
+            .entry(String::from(id))
+            .or_insert(Arc::new(RefCell::new(
+                DataNode::new(id, ip, port, public_url, max_volumes),
+            )));
         node.clone()
     }
 
@@ -262,15 +253,14 @@ impl Rack {
 }
 
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct DataCenter {
     pub id: String,
     pub max_volume_id: VolumeId,
     pub racks: HashMap<String, Arc<RefCell<Rack>>>,
 }
 
-impl Serialize for DataCenter
-{
+impl Serialize for DataCenter {
     fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,

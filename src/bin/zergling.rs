@@ -1,13 +1,13 @@
 #![feature(plugin)]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
-extern crate zergling;
+extern crate clap;
+extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate env_logger;
-extern crate clap;
-extern crate signal;
 extern crate nix;
+extern crate signal;
+extern crate zergling;
 
 
 use clap::{App, Arg, SubCommand};
@@ -35,9 +35,12 @@ fn main() {
         .subcommand(
             SubCommand::with_name("master")
                 .about("master server")
-                .arg(Arg::with_name("ip").long("ip").takes_value(true).help(
-                    "ip address default localhost",
-                ))
+                .arg(
+                    Arg::with_name("ip")
+                        .long("ip")
+                        .takes_value(true)
+                        .help("ip address default localhost"),
+                )
                 .arg(Arg::with_name("mdir").long("mdir").takes_value(true))
                 .arg(Arg::with_name("port").long("port").takes_value(true))
                 .arg(
@@ -69,9 +72,12 @@ fn main() {
                         .long("pulse_seconds")
                         .takes_value(true),
                 )
-                .arg(Arg::with_name("ip").long("ip").takes_value(true).help(
-                    "ip address default localhost",
-                ))
+                .arg(
+                    Arg::with_name("ip")
+                        .long("ip")
+                        .takes_value(true)
+                        .help("ip address default localhost"),
+                )
                 .arg(Arg::with_name("port").long("port").takes_value(true))
                 .arg(
                     Arg::with_name("public_url")
@@ -98,7 +104,10 @@ fn main() {
                         .long("dir")
                         .takes_value(true)
                         .multiple(true)
-                        .long_help("directories to store data files. -dir dir_name:max_volume_counts  like -dir /data1:7 max_volume_counts default 7 if not specified"),
+                        .long_help(
+                            "directories to store data files. -dir dir_name:max_volume_counts
+                                   like -dir /data1:7 max_volume_counts default 7 if not specified",
+                        ),
                 )
                 .arg(
                     Arg::with_name("master_server")
@@ -214,7 +223,6 @@ fn main() {
         handle_signal();
         server.stop();
     }
-
 }
 
 
@@ -230,5 +238,4 @@ fn handle_signal() {
             _ => unreachable!(),
         }
     }
-
 }

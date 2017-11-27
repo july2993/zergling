@@ -1,4 +1,3 @@
-
 extern crate zergling;
 
 use zergling::directory::server::Server as DServer;

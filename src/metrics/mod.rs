@@ -2,7 +2,7 @@ use prometheus::*;
 
 
 lazy_static! {
-    pub static ref HTTP_REQ_COUNTER_VEC: CounterVec = 
+    pub static ref HTTP_REQ_COUNTER_VEC: CounterVec =
         register_counter_vec!(
             "zergling_req_total",
             "the number of http request",

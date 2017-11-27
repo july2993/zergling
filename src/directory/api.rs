@@ -32,11 +32,14 @@ pub enum Msg {
     API { req: Request, cb: APICallback },
 }
 
-pub fn make_callback()
-    -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Result<Response>>)
-{
+pub fn make_callback() -> (
+    Box<FnBox(Result<Response>) + Send>,
+    oneshot::Receiver<Result<Response>>,
+) {
     let (tx, rx) = oneshot::channel();
-    let callback = move |resp| { tx.send(resp).unwrap(); };
+    let callback = move |resp| {
+        tx.send(resp).unwrap();
+    };
     (Box::new(callback), rx)
 }
 
@@ -75,6 +78,19 @@ impl Context {
             option.preallocate = preallocate.parse()?;
         }
 
+        if let Some(collection) = params.get("collection") {
+            option.collection = collection.clone();
+        }
+        if let Some(data_center) = params.get("dataCenter") {
+            option.data_center = data_center.clone();
+        }
+        if let Some(rack) = params.get("rack") {
+            option.rack = rack.clone();
+        }
+        if let Some(data_node) = params.get("dataNode") {
+            option.data_node = data_node.clone();
+        }
+
         Ok(option)
     }
 
@@ -85,14 +101,16 @@ impl Context {
         for _i in 0..16 {
             let mut ctx = self.clone();
             let recv = alrecv.clone();
-            let t = thread::spawn(move || loop {
-                match recv.lock().unwrap().recv() {
-                    Ok(msg) => ctx.handle_msg(msg),
-                    Err(err) => {
-                        info!("recv msg err: {}", err);
-                        return;
-                    }
-                };
+            let t = thread::spawn(move || {
+                loop {
+                    match recv.lock().unwrap().recv() {
+                        Ok(msg) => ctx.handle_msg(msg),
+                        Err(err) => {
+                            info!("recv msg err: {}", err);
+                            return;
+                        }
+                    };
+                }
             });
             threads.push(t);
         }
@@ -113,13 +131,11 @@ impl Context {
                 match (&method, path.as_ref()) {
                     // seaweedfs will call this to check wheather master is alive
                     (&Method::Get, "/stats") => cb(Ok(Response::new())),
-                    (&Method::Get, "/dir/assign") |
-                    (&Method::Post, "/dir/assign") => {
+                    (&Method::Get, "/dir/assign") | (&Method::Post, "/dir/assign") => {
                         let handle = assign_handler(&req, self);
                         cb(handle);
                     }
-                    (&Method::Get, "/dir/lookup") |
-                    (&Method::Post, "/dir/lookup") => {
+                    (&Method::Get, "/dir/lookup") | (&Method::Post, "/dir/lookup") => {
                         let handle = lookup_handler(req, self);
                         cb(handle);
                     }
@@ -307,7 +323,8 @@ impl Service for HTTPContext {
                         .with_header(ContentLength(s.len() as u64))
                         .with_body(s)
                 }
-            }).map(move |v| {
+            })
+            .map(move |v| {
                 timer.observe_duration();
                 v
             });

@@ -1,10 +1,10 @@
-use directory::topology::{Topology, DataNode, VolumeInfo, DataCenter, Rack};
-use directory::{Result, Error};
+use directory::topology::{DataCenter, DataNode, Rack, Topology, VolumeInfo};
+use directory::{Error, Result};
 use storage;
 use storage::VolumeId;
 use std::cell::RefCell;
 use std::sync::Arc;
-use rand::{thread_rng, Rng, random};
+use rand::{random, thread_rng, Rng};
 
 
 use util;
@@ -287,7 +287,6 @@ impl VolumeGrow {
             }
 
             topo.register_volume_layout(volume_info, nd.clone());
-
         }
         Ok(())
     }
@@ -309,7 +308,6 @@ impl VolumeGrowOption {}
 
 
 fn allocate_volume(dn: &DataNode, vid: VolumeId, option: &VolumeGrowOption) -> Result<()> {
-
     let vid_p = &vid.to_string();
     let collection_p = &option.collection;
     let rp_p = &option.replica_placement.string();

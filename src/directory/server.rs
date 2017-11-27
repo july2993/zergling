@@ -5,9 +5,9 @@ use futures::*;
 use grpcio::Error as GError;
 use pb::zergling_grpc;
 use super::topology::Topology;
-use super::sequencer::{Sequencer, MemorySequencer};
-use grpcio::{self, ClientStreamingSink, RequestStream, RpcContext, RpcStatus, RpcStatusCode,
-             UnarySink, DuplexSink};
+use super::sequencer::{MemorySequencer, Sequencer};
+use grpcio::{self, ClientStreamingSink, DuplexSink, RequestStream, RpcContext, RpcStatus,
+             RpcStatusCode, UnarySink};
 use futures::future::Future;
 use hyper::header::ContentLength;
 use hyper::server::{Http, Request, Response, Service};
@@ -55,9 +55,11 @@ impl Server {
         garbage_threshold: f64,
         seq: MemorySequencer,
     ) -> Server {
-        let topo = Arc::new(Mutex::new(
-            Topology::new(seq, volume_size_limit_mb*1024*1024, pluse_seconds),
-        ));
+        let topo = Arc::new(Mutex::new(Topology::new(
+            seq,
+            volume_size_limit_mb * 1024 * 1024,
+            pluse_seconds,
+        )));
 
         let env = Arc::new(Environment::new(2));
         let service = zergling_grpc::create_zergling(GrpcServer {
@@ -109,7 +111,9 @@ impl Server {
             cpu_pool: CpuPool::new(16),
         };
 
-        let api_handle = thread::spawn(move || { ctx.run(receiver); });
+        let api_handle = thread::spawn(move || {
+            ctx.run(receiver);
+        });
         self.handles.push(Some(api_handle));
 
 
@@ -158,7 +162,7 @@ impl ZService for GrpcServer {
 
         let to_send = stream
             .map(move |heartbeat| {
-                debug!("recv heartbeat: {:?}", heartbeat);
+                // debug!("recv heartbeat: {:?}", heartbeat);
 
                 let mut topo = topo.lock().unwrap();
                 topo.sequence.set_max(heartbeat.max_file_key);
@@ -214,13 +218,12 @@ impl ZService for GrpcServer {
                 resp.volumeSizeLimit = volume_size_limit_mb;
 
                 stream::iter_ok::<_, GError>(vec![(resp, WriteFlags::default())])
-
             })
             .flatten();
 
-        let f = sink.send_all(to_send).map(|_| {}).map_err(|e| {
-            error!("failed to send heartbeat response: {:?}", e)
-        });
+        let f = sink.send_all(to_send)
+            .map(|_| {})
+            .map_err(|e| error!("failed to send heartbeat response: {:?}", e));
         ctx.spawn(f)
     }
 }

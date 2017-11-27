@@ -1,11 +1,9 @@
-
-use storage::{VolumeId, ReplicaPlacement, Version, TTL, Result};
+use storage::{ReplicaPlacement, Result, Version, VolumeId, TTL};
 use pb;
 
 
 
-#[derive(Clone, Debug, Default)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VolumeInfo {
     pub id: VolumeId,
     pub size: u64,

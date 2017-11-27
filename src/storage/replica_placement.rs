@@ -1,10 +1,8 @@
-
 use super::Result;
 use std::fmt::Write;
 use storage::errors::Error::ParseReplicaPlacement;
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
 pub struct ReplicaPlacement {
     pub same_rack_count: u8,
     pub diff_rack_count: u8,
@@ -30,9 +28,9 @@ impl ReplicaPlacement {
         let bytes = s.as_bytes();
 
         let rp = ReplicaPlacement {
-            same_rack_count: bytes[0] - '0' as u8,
+            diff_data_center_count: bytes[0] - '0' as u8,
             diff_rack_count: bytes[1] - '0' as u8,
-            diff_data_center_count: bytes[1] - '0' as u8,
+            same_rack_count: bytes[2] - '0' as u8,
         };
 
         Ok(rp)

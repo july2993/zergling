@@ -17,8 +17,7 @@ use hyper::server::{Http, Request, Response, Service};
 
 pub struct Server {
     ip_bind: String,
-    #[allow(dead_code)]
-    ip: String,
+    #[allow(dead_code)] ip: String,
     port: u16,
     pub master_node: String,
     pub pulse_seconds: i64,
@@ -142,21 +141,23 @@ fn start_heartbeat(
     pulse_seconds: i64,
     is_stop: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
-    thread::spawn(move || loop {
-        info!("start heartbeat....");
-        if is_stop.load(Ordering::SeqCst) == true {
-            info!("quit heartbeat");
-            return;
-        }
+    thread::spawn(move || {
+        loop {
+            info!("start heartbeat....");
+            if is_stop.load(Ordering::SeqCst) == true {
+                info!("quit heartbeat");
+                return;
+            }
 
-        do_heartbeat(
-            store.clone(),
-            master_node.clone(),
-            pulse_seconds,
-            is_stop.clone(),
-        );
-        warn!("heartbeat end....");
-        thread::sleep(Duration::from_secs(pulse_seconds as u64));
+            do_heartbeat(
+                store.clone(),
+                master_node.clone(),
+                pulse_seconds,
+                is_stop.clone(),
+            );
+            warn!("heartbeat end....");
+            thread::sleep(Duration::from_secs(pulse_seconds as u64));
+        }
     })
 }
 
@@ -172,19 +173,23 @@ fn do_heartbeat(
 
     let (mut sink, mut receiver) = client.send_heartbeat();
 
-    let h = thread::spawn(move || loop {
-        match receiver.into_future().wait() {
-            Ok((Some(beat), r)) => {
-                debug!("recv: {:?}", beat);
-                receiver = r;
-            }
-            Ok((None, _)) => {
-                info!("director server close heartbeat");
-                break;
-            }
-            Err((e, _)) => {
-                error!("RPC failed: {:?}", e);
-                break;
+    let recv_store = store.clone();
+    let h = thread::spawn(move || {
+        loop {
+            match receiver.into_future().wait() {
+                Ok((Some(beat), r)) => {
+                    // debug!("recv: {:?}", beat);
+                    receiver = r;
+                    recv_store.lock().unwrap().volume_size_limit = beat.volumeSizeLimit;
+                }
+                Ok((None, _)) => {
+                    info!("director server close heartbeat");
+                    break;
+                }
+                Err((e, _)) => {
+                    error!("RPC failed: {:?}", e);
+                    break;
+                }
             }
         }
     });

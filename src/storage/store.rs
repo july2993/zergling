@@ -1,8 +1,7 @@
-
 use storage;
 use storage::needle;
-use storage::{DiskLocation, VolumeId, Needle, Result, Volume, Error, NeedleMapType,
-              ReplicaPlacement, TTL};
+use storage::{DiskLocation, Error, Needle, NeedleMapType, ReplicaPlacement, Result, Volume,
+              VolumeId, TTL};
 use pb;
 
 const MAX_TTL_VOLUME_REMOVAL_DELAY_MINUTES: u64 = 10;
@@ -33,7 +32,6 @@ impl Store {
         max_counts: Vec<i64>,
         needle_map_kind: storage::NeedleMapType,
     ) -> Store {
-
         let mut locations = vec![];
         for i in 0..folders.len() {
             let mut location = DiskLocation::new(&folders[i], max_counts[i]);
@@ -109,7 +107,6 @@ impl Store {
             }
 
             return v.write_needle(n);
-
         } else {
             return Err((box_err!("volume {} not fount", vid)));
         }
@@ -162,9 +159,8 @@ impl Store {
             return Err(box_err!("volume id {} already exists!", vid));
         }
 
-        let location = self.find_free_location().ok_or::<Error>(
-            box_err!("no more free space left"),
-        )?;
+        let location = self.find_free_location()
+            .ok_or::<Error>(box_err!("no more free space left"))?;
 
         let volume = Volume::new(
             &location.directory,
@@ -192,7 +188,6 @@ impl Store {
         ttl_str: &str,
         pre_allocate: i64,
     ) -> Result<()> {
-
         let rp = ReplicaPlacement::new(replica_placement)?;
         let ttl = TTL::new(ttl_str)?;
 
@@ -203,27 +198,13 @@ impl Store {
             if parts.len() == 1 {
                 let id_str = parts[0];
                 let vid = id_str.parse::<u32>()?;
-                self.do_add_volume(
-                    vid,
-                    collection,
-                    needle_map_kind,
-                    rp,
-                    ttl,
-                    pre_allocate,
-                )?;
+                self.do_add_volume(vid, collection, needle_map_kind, rp, ttl, pre_allocate)?;
             } else {
                 let start = parts[0].parse::<u32>()?;
                 let end = parts[1].parse::<u32>()?;
 
                 for id in start..(end + 1) {
-                    self.do_add_volume(
-                        id,
-                        collection,
-                        needle_map_kind,
-                        rp,
-                        ttl,
-                        pre_allocate,
-                    )?;
+                    self.do_add_volume(id, collection, needle_map_kind, rp, ttl, pre_allocate)?;
                 }
             }
         }

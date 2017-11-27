@@ -9,7 +9,9 @@ pub struct MemorySequencer {
 
 impl MemorySequencer {
     pub fn new() -> MemorySequencer {
-        MemorySequencer { counter: Arc::new(Mutex::new(1)) }
+        MemorySequencer {
+            counter: Arc::new(Mutex::new(1)),
+        }
     }
 }
 

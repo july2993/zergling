@@ -1,7 +1,7 @@
-use std::{thread, fs};
+use std::{fs, thread};
 use std::path::Path;
 use std::sync::mpsc;
-use std::fs::{File, metadata, Metadata};
+use std::fs::{metadata, File, Metadata};
 use std::time::{Duration, SystemTime};
 use std::io::ErrorKind;
 use std::os::unix::fs::OpenOptionsExt;
@@ -10,6 +10,8 @@ use storage::needle::NEEDLE_PADDING_SIZE;
 use std::io::SeekFrom;
 use std::io::Cursor;
 use storage::needle_value::NeedleValue;
+use std::fmt::Display;
+use std::fmt;
 use byteorder::WriteBytesExt;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::prelude::*;
@@ -17,7 +19,7 @@ use std::io::prelude::*;
 use super::{Version, CURRENT_VERSION};
 use super::ReplicaPlacement;
 use super::TTL;
-use super::{VolumeId, Result, Error, Needle, NeedleMapper, NeedleValueMap, NeedleMapType,
+use super::{Error, Needle, NeedleMapType, NeedleMapper, NeedleValueMap, Result, VolumeId,
             VolumeInfo};
 
 use super::needle;
@@ -81,7 +83,7 @@ impl SuperBlock {
     }
 }
 
-// #[derive(Default)]
+// #[derive(Debug)]
 pub struct Volume {
     pub id: VolumeId,
     pub dir: String,
@@ -96,6 +98,20 @@ pub struct Volume {
     pub last_compact_index_offset: u64,
     pub last_compact_revision: u16,
     index_sender: mpsc::Sender<(u64, u32, u32)>,
+}
+
+impl Display for Volume {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{{id: {}, dir: {}, collection: {}, replica_placement: {:?}, read_only: {}}}",
+            self.id,
+            self.dir,
+            self.collection,
+            self.replica_placement,
+            self.read_only
+        )
+    }
 }
 
 impl Volume {
@@ -131,7 +147,7 @@ impl Volume {
             last_compact_revision: 0,
             last_modified_time: 0,
             replica_placement: ReplicaPlacement::default(),
-            
+
             // ..Default::default()
         };
 
@@ -165,10 +181,8 @@ impl Volume {
                         return;
                     }
                 }
-
             }
             warn!("volume {} index file writer exit", vid);
-
         });
 
         Ok(())
@@ -238,9 +252,9 @@ impl Volume {
                 .write(true)
                 .open(self.index_file_name())?;
 
-            let mut data_file = fs::OpenOptions::new().read(true).open(
-                self.data_file_name(),
-            )?;
+            let mut data_file = fs::OpenOptions::new()
+                .read(true)
+                .open(self.data_file_name())?;
 
             debug!("{} start load index file", self.index_file_name());
             self.nm.load_idx_file(&mut index_file, &mut data_file)?;
@@ -285,9 +299,9 @@ impl Volume {
     }
 
     fn async_wirte_index_file(&mut self, key: u64, offset: u32, size: u32) -> Result<()> {
-        self.index_sender.send((key, offset, size)).map_err(|e| {
-            box_err!("send err: {}", e)
-        })
+        self.index_sender
+            .send((key, offset, size))
+            .map_err(|e| box_err!("send err: {}", e))
     }
 
 
@@ -305,8 +319,8 @@ impl Volume {
             offset = file.seek(SeekFrom::End(0))?;
 
             if offset % NEEDLE_PADDING_SIZE as u64 != 0 {
-                offset = offset +
-                    (NEEDLE_PADDING_SIZE as u64 - offset % NEEDLE_PADDING_SIZE as u64);
+                offset =
+                    offset + (NEEDLE_PADDING_SIZE as u64 - offset % NEEDLE_PADDING_SIZE as u64);
                 offset = file.seek(SeekFrom::Start(offset))?;
             }
 
@@ -337,7 +351,6 @@ impl Volume {
         }
 
         Ok(size)
-
     }
 
     pub fn delete_needle(&mut self, n: &Needle) -> Result<u32> {
@@ -405,7 +418,6 @@ impl Volume {
         }
 
         rt
-
     }
 
     pub fn get_volume_info(&self) -> VolumeInfo {
@@ -488,8 +500,8 @@ impl Volume {
             delay = max_delay_minutes;
         }
 
-        if (ttl.minutes() as u64 + delay) * 60 + self.last_modified_time <
-            SystemTime::now()
+        if (ttl.minutes() as u64 + delay) * 60 + self.last_modified_time
+            < SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
