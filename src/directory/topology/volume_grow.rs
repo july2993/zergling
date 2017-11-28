@@ -322,7 +322,7 @@ fn allocate_volume(dn: &DataNode, vid: VolumeId, option: &VolumeGrowOption) -> R
     params.push(("ttl", ttl_p));
     params.push(("preallocate", pre_p));
 
-    let body = util::post(&format!("http://{}/admin/assign_volume", dn.url()), &params)?;
+    let body = util::get(&format!("http://{}/admin/assign_volume", dn.url()), &params)?;
 
     let v: serde_json::Value = serde_json::from_slice(&body)?;
 

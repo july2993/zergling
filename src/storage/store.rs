@@ -79,7 +79,7 @@ impl Store {
         None
     }
 
-    pub fn delete_volume_needle(&mut self, vid: VolumeId, n: &Needle) -> Result<u32> {
+    pub fn delete_volume_needle(&mut self, vid: VolumeId, n: &mut Needle) -> Result<u32> {
         if let Some(v) = self.find_volume_mut(vid) {
             return v.delete_needle(n);
         }
@@ -97,12 +97,6 @@ impl Store {
     pub fn write_volume_needle(&mut self, vid: VolumeId, n: &mut Needle) -> Result<u32> {
         if let Some(v) = self.find_volume_mut(vid) {
             if v.read_only {
-                return Err(box_err!("volume {} is read only", vid));
-            }
-
-            // TODO what
-            // if v.content_size() > needle::MAX_POSSIBLE_VOLUME_SIZE {
-            if false {
                 return Err(box_err!("volume {} is read only", vid));
             }
 

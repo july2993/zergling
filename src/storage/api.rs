@@ -150,6 +150,10 @@ impl Context {
                         let handle = post_handler(self, req);
                         cb(handle);
                     }
+                    (&Method::Delete, _) => {
+                        let handle = delete_handler(self, req);
+                        cb(handle);
+                    }
                     (_, _) => {
                         let handle = test_handler(&req);
                         cb(handle);
@@ -421,18 +425,126 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
     Ok(resp)
 }
 
+pub fn delete_handler(ctx: &mut Context, req: Request) -> Result<Response> {
+    let params = util::get_request_params(&req);
+    let (svid, fid, _, _, _) = parse_url_path(req.path());
+    let vid = svid.parse::<u32>()?;
+    let is_replicate = if Some(&"replicate".to_owned()) == params.get("type") {
+        true
+    } else {
+        false
+    };
+
+    let mut n: Needle = Needle::default();
+    let path: String = req.path().to_string();
+    n.parse_path(&fid)?;
+
+    let cookie = n.cookie;
+
+    {
+        let mut store = ctx.store.lock().unwrap();
+        store.read_volume_needle(vid, &mut n)?;
+        if cookie != n.cookie {
+            info!(
+                "cookie not match from {:?} recv: {} file is {}",
+                req.remote_addr(),
+                cookie,
+                n.cookie
+            );
+            return Ok(util::error_json_response("cookie not match"));
+        }
+    }
+
+    let size = replicate_delete(ctx, &path, vid, &mut n, is_replicate)?;
+    let j = json!({ "size": &size }).to_string();
+
+    debug!("delete resp: {}", j);
+
+    let response = Response::new()
+        .with_header(ContentLength(j.len() as u64))
+        .with_body(j);
+
+    Ok(response)
+}
+
+fn replicate_delete(
+    ctx: &mut Context,
+    path: &str,
+    vid: VolumeId,
+    needle: &mut Needle,
+    is_replicate: bool,
+) -> Result<u32> {
+    let size: u32;
+    let self_url: String;
+
+    {
+        let mut s = ctx.store.lock().unwrap();
+        self_url = format!("{}:{}", s.ip, s.port);
+        size = s.delete_volume_needle(vid, needle)?;
+        if is_replicate {
+            return Ok(size);
+        }
+
+        let v = s.find_volume_mut(vid).unwrap();
+        debug!("write volume: {}", v);
+        if !v.need_to_replicate() {
+            return Ok(size);
+        }
+    }
+
+    let mut params: Vec<(&str, &str)> = vec![];
+    params.push(("type", "replicate"));
+    let res = ctx.looker.lock().unwrap().lookup(&vid.to_string())?;
+    debug!("get lookup res: {:?}", res);
+
+    // TODO concurrent replicate
+    for location in res.locations.iter() {
+        if location.url == self_url {
+            continue;
+        }
+        let url = format!("http://{}{}", &location.url, path);
+        util::delete(&url, &params)
+            .map_err(|e| storage::Error::String(e))
+            .and_then(|body| {
+                let value: serde_json::Value = serde_json::from_slice(&body)?;
+                if let Some(err) = value["error"].as_str() {
+                    if err.len() <= 0 {
+                        return Ok(());
+                    } else {
+                        return Err(box_err!("wirte {} err: {}", location.url, err));
+                    }
+                }
+
+                Ok(())
+            })?;
+    }
+    Ok(size)
+}
+
 pub fn post_handler(ctx: &mut Context, req: Request) -> Result<Response> {
     let params = util::get_request_params(&req);
     let (svid, _, _, _, _) = parse_url_path(req.path());
     let vid = svid.parse::<u32>()?;
+    let is_replicate = if Some(&"replicate".to_owned()) == params.get("type") {
+        true
+    } else {
+        false
+    };
 
     debug!("post vid: {}", vid);
 
-    let mut n = new_needle_from_request(req)?;
+    let path: String = req.path().to_string();
+    let mut n: Needle;
+    if !is_replicate {
+        n = new_needle_from_request(req)?;
+    } else {
+        let body = read_req_body_full(req.body())?;
+        n = Needle::replicate_deserialize(&body)?;
+    }
 
     debug!("post needle: {}", n);
 
-    let size = replicate_write(ctx, &params, vid, &mut n)?;
+    let size = replicate_write(ctx, &path, vid, &mut n, is_replicate)?;
 
     let mut result = operation::UploadResult::default();
 
@@ -650,6 +762,7 @@ fn write_response_content(
 // http://localhost:8080/3/01637037d6
 // http://localhost:8080/3,01637037d6
 // @return vid, fid, filename, ext, is_volume_id_only
+// /3/01637037d6/my_preferred_name.jpg -> (3,01637037d6,my_preferred_name.jpg,jpg,false)
 fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
     let vid: String;
     let mut fid: String;
@@ -714,20 +827,19 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
 
 fn replicate_write(
     ctx: &mut Context,
-    params: &HashMap<String, String>,
-    // master: &str,
-    // s: &mut Store,
+    path: &str,
     vid: VolumeId,
     needle: &mut Needle,
+    is_replicate: bool,
 ) -> Result<u32> {
     let size: u32;
+    let self_url: String;
     {
         let mut s = ctx.store.lock().unwrap();
+        self_url = format!("{}:{}", s.ip, s.port);
         size = s.write_volume_needle(vid, needle)?;
-        if let Some(v) = params.get("type") {
-            if v == "replicate" {
-                return Ok(size);
-            }
+        if is_replicate {
+            return Ok(size);
         }
 
         let v = s.find_volume_mut(vid).unwrap();
@@ -737,24 +849,33 @@ fn replicate_write(
         }
     }
 
-    let last_modified = needle.last_modified.to_string();
     let mut params: Vec<(&str, &str)> = vec![];
     params.push(("type", "replicate"));
-    if needle.last_modified > 0 {
-        params.push(("ts", &last_modified));
-    }
-
-    if needle.is_chunk_manifest() {
-        params.push(("cm", "true"));
-    }
-
-    // don't support custom header pair like seaweed
+    let data = needle.replicate_serialize();
 
     let res = ctx.looker.lock().unwrap().lookup(&vid.to_string())?;
+    debug!("get lookup res: {:?}", res);
 
     // TODO concurrent replicate
     for location in res.locations.iter() {
-        util::post(&location.url, &params).map_err(|e| storage::Error::String(e))?;
+        if location.url == self_url {
+            continue;
+        }
+        let url = format!("http://{}{}", &location.url, path);
+        util::post(&url, &params, &data)
+            .map_err(|e| storage::Error::String(e))
+            .and_then(|body| {
+                let value: serde_json::Value = serde_json::from_slice(&body)?;
+                if let Some(err) = value["error"].as_str() {
+                    if err.len() <= 0 {
+                        return Ok(());
+                    } else {
+                        return Err(box_err!("wirte {} err: {}", location.url, err));
+                    }
+                }
+
+                Ok(())
+            })?;
     }
 
     Ok(size)

@@ -114,7 +114,7 @@ fn main() {
                         .long("master_server")
                         .takes_value(true)
                         .long_help("master server location")
-                        .default_value("localhost:9334"),
+                        .default_value("localhost:9333"),
                 ),
         )
         .get_matches();

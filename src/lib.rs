@@ -6,6 +6,7 @@
 #![cfg_attr(feature = "dev", feature(plugin))]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
+extern crate bincode;
 extern crate byteorder;
 extern crate chrono;
 extern crate crc;
@@ -37,6 +38,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 extern crate signal;
+extern crate tempdir;
 extern crate time;
 extern crate tokio_core;
 extern crate url;
@@ -49,9 +51,3 @@ pub mod storage;
 pub mod client;
 pub mod operation;
 pub mod metrics;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {}
-}

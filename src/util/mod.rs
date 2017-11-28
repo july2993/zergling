@@ -5,7 +5,7 @@ pub mod macros;
 pub mod errors;
 
 
-pub use self::post::post;
+pub use self::post::*;
 pub use self::errors::{Error, Result};
 use hyper::server::{Request, Response};
 use hyper;

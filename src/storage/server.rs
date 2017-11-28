@@ -80,6 +80,12 @@ impl Server {
         }
     }
 
+    fn grpc_addr(&self) -> String {
+        let idx = self.master_node.rfind(":").unwrap();
+        let port = self.master_node[idx + 1..].parse::<u16>().unwrap();
+
+        format!("{}:{}", &self.master_node[..idx], port + 1)
+    }
 
     pub fn start(&mut self) {
         self.is_stop.store(false, Ordering::SeqCst);
@@ -106,7 +112,7 @@ impl Server {
 
         let beat_handle = start_heartbeat(
             self.store.clone(),
-            self.master_node.clone(),
+            self.grpc_addr(),
             self.pulse_seconds,
             self.is_stop.clone(),
         );

@@ -30,9 +30,14 @@ impl Client {
     }
 
     fn get_content(&mut self, url: &str) -> Result<Vec<u8>> {
+        self.request_content(url, Method::Get)
+    }
+
+    fn request_content(&mut self, url: &str, method: Method) -> Result<Vec<u8>> {
         let uri = url.parse()?;
         let cli = HClient::new(&self.core.handle());
-        let work = cli.get(uri).map_err(Error::from).and_then(|res| {
+        let req: Request<hyper::Body> = Request::new(method, uri);
+        let work = cli.request(req).map_err(Error::from).and_then(|res| {
             debug!("Response: {}", res.status());
 
             res.body()
@@ -44,7 +49,11 @@ impl Client {
     }
 
     fn get_json(&mut self, url: &str) -> Result<serde_json::Value> {
-        self.get_content(url).and_then(|c| {
+        self.request_json(url, Method::Get)
+    }
+
+    fn request_json(&mut self, url: &str, method: Method) -> Result<serde_json::Value> {
+        self.request_content(url, method).and_then(|c| {
             serde_json::from_slice::<serde_json::Value>(&c)
                 .map_err(Error::from)
                 .and_then(|v| {
@@ -117,8 +126,13 @@ impl Client {
     }
 
     // {"fid":"2,17379c608","url":"127.0.0.1:8080","publicUrl":"127.0.0.1:8080","count":1,"error":""}
-    pub fn assign(&mut self) -> Result<serde_json::Value> {
-        let url = &format!("http://{}/dir/assign", self.master);
+    pub fn assign(&mut self, rp: &str) -> Result<serde_json::Value> {
+        let url = &format!("http://{}/dir/assign?replication={}", self.master, rp);
+        self.get_json(url)
+    }
+
+    pub fn lookup(&mut self, vid: &str) -> Result<serde_json::Value> {
+        let url = &format!("http://{}/dir/lookup?volumeId={}", self.master, vid);
         self.get_json(url)
     }
 
@@ -135,6 +149,11 @@ impl Client {
     pub fn get_file_content_by_fid(&mut self, addr: &str, fid: &str) -> Result<Vec<u8>> {
         let url = &format!("http://{}/{}", addr, fid);
         self.get_content(url)
+    }
+
+    pub fn delete_by_fid(&mut self, addr: &str, fid: &str) -> Result<serde_json::Value> {
+        let url = &format!("http://{}/{}", addr, fid);
+        self.request_json(url, Method::Delete)
     }
 }
 

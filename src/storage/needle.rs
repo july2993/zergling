@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use super::{Result, Version, TTL};
+use super::{Error, Result, Version, TTL};
 use super::version::VERSION2;
 use std;
+use bincode::{self, deserialize, serialize, Bounded};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
@@ -34,7 +35,7 @@ pub const NEEDLE_FLAG_OFFSET: usize = 20;
 pub const NEEDLE_ID_OFFSET: usize = 4;
 pub const NEEDLE_SIZE_OFFSET: usize = 12;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Needle {
     pub cookie: u32,
     pub id: u64,
@@ -106,6 +107,14 @@ impl Needle {
         self.cookie = rdr.read_u32::<BigEndian>().unwrap();
         self.id = rdr.read_u64::<BigEndian>().unwrap();
         self.size = rdr.read_u32::<BigEndian>().unwrap();
+    }
+
+    pub fn replicate_serialize(&self) -> Vec<u8> {
+        serialize(self, bincode::Infinite).unwrap()
+    }
+
+    pub fn replicate_deserialize(data: &[u8]) -> Result<Needle> {
+        deserialize(data).map_err(Error::from)
     }
 
     pub fn parse_path(&mut self, fid: &str) -> Result<()> {

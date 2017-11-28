@@ -91,7 +91,6 @@ pub struct Volume {
     pub data_file: Option<File>,
     pub nm: NeedleMapper,
     pub needle_map_kind: NeedleMapType,
-    pub replica_placement: ReplicaPlacement,
     pub read_only: bool,
     pub super_block: SuperBlock,
     pub last_modified_time: u64,
@@ -104,11 +103,12 @@ impl Display for Volume {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{{id: {}, dir: {}, collection: {}, replica_placement: {:?}, read_only: {}}}",
+            "{{id:{}, dir:{}, collection: {}, replica_placement: {:?}, ttl: {:?}, read_only: {}}}",
             self.id,
             self.dir,
             self.collection,
-            self.replica_placement,
+            self.super_block.replica_placement,
+            self.super_block.ttl,
             self.read_only
         )
     }
@@ -146,9 +146,6 @@ impl Volume {
             last_compact_index_offset: 0,
             last_compact_revision: 0,
             last_modified_time: 0,
-            replica_placement: ReplicaPlacement::default(),
-
-            // ..Default::default()
         };
 
         v.load(true, true)?;
@@ -335,13 +332,23 @@ impl Volume {
         }
 
         offset = offset / NEEDLE_PADDING_SIZE as u64;
-        self.nm.set(
-            n.id,
-            NeedleValue {
-                offset: offset as u32,
-                size: n.size,
-            },
-        );
+        if !n.is_delete() {
+            self.nm.set(
+                n.id,
+                NeedleValue {
+                    offset: offset as u32,
+                    size: n.size,
+                },
+            );
+        } else {
+            self.nm.set(
+                n.id,
+                NeedleValue {
+                    offset: 0,
+                    size: n.size,
+                },
+            );
+        }
 
         self.async_wirte_index_file(n.id, offset as u32, n.size)?;
 
@@ -353,9 +360,23 @@ impl Volume {
         Ok(size)
     }
 
-    pub fn delete_needle(&mut self, n: &Needle) -> Result<u32> {
-        let _ = n;
-        panic!("TODO");
+    pub fn delete_needle(&mut self, n: &mut Needle) -> Result<u32> {
+        debug!("delete needle: {}", n);
+        if self.read_only {
+            return Err(box_err!("{} is read-only", self.data_file_name()));
+        }
+
+        // not return error if has not this needle
+        let nv = match self.nm.get(n.id) {
+            Some(nv) => nv,
+            None => return Ok(0),
+        };
+
+        n.set_is_delete();
+        n.data = vec![];
+        self.write_needle(n)?;
+
+        Ok(nv.size)
     }
 
     pub fn read_needle(&mut self, n: &mut Needle) -> Result<u32> {
@@ -446,9 +467,9 @@ impl Volume {
         Ok(())
     }
 
+    /// the volume file size
     pub fn content_size(&self) -> u64 {
-        // TODO
-        0
+        self.nm.content_size()
     }
 
     pub fn size(&self) -> Result<u64> {
@@ -485,7 +506,7 @@ impl Volume {
     }
 
     pub fn need_to_replicate(&self) -> bool {
-        self.replica_placement.get_copy_count() > 1
+        self.super_block.replica_placement.get_copy_count() > 1
     }
 
     // wait either maxDelayMinutes or 10% of ttl minutes
