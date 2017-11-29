@@ -1,3 +1,5 @@
+[![Status](https://travis-ci.org/july2993/zergling.svg?branch=master)](https://travis-ci.org/july2993/zergling)
+
 seaweedfs re-implemented in Rust.
 
 ## Why?
