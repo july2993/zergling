@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::cell::RefCell;
 
 
-use super::{VolumeLayout, DataNode};
-use storage::{ReplicaPlacement, TTL, VolumeId};
+use super::{DataNode, VolumeLayout};
+use storage::{ReplicaPlacement, VolumeId, TTL};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Collection {
     pub name: String,
     pub volume_size_limit: u64,
@@ -31,7 +31,6 @@ impl Collection {
         rp: ReplicaPlacement,
         ttl: Option<TTL>,
     ) -> &mut VolumeLayout {
-
         let mut key = rp.string();
         if ttl.is_some() {
             key = key.add(&ttl.unwrap().string());
@@ -39,10 +38,9 @@ impl Collection {
 
         let vsize = self.volume_size_limit;
 
-        self.type2layout.entry(key).or_insert_with(|| {
-            VolumeLayout::new(rp, ttl, vsize)
-        })
-
+        self.type2layout
+            .entry(key)
+            .or_insert_with(|| VolumeLayout::new(rp, ttl, vsize))
     }
 
     pub fn lookup(&self, vid: VolumeId) -> Option<Vec<Arc<RefCell<DataNode>>>> {

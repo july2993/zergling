@@ -7,4 +7,4 @@ pub mod errors;
 
 
 
-pub use self::errors::{Result, Error};
+pub use self::errors::{Error, Result};

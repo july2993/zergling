@@ -16,7 +16,7 @@ mod api;
 
 pub use self::version::{Version, CURRENT_VERSION};
 pub use self::errors::{Error, Result};
-pub use self::ttl::{TTL, Unit};
+pub use self::ttl::{Unit, TTL};
 pub use self::replica_placement::ReplicaPlacement;
 pub use self::needle_value::NeedleValue;
 pub use self::needle_map::*;

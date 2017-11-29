@@ -2,7 +2,7 @@ use storage;
 use std::collections::HashMap;
 use std::fs::{self, DirEntry};
 use std::path::Path;
-use storage::{VolumeId, Volume, NeedleMapType, Result, ReplicaPlacement, TTL};
+use storage::{NeedleMapType, ReplicaPlacement, Result, Volume, VolumeId, TTL};
 
 
 pub struct DiskLocation {

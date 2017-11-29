@@ -1,4 +1,3 @@
-
 use super::VolumeId;
 use byteorder::BigEndian;
 use byteorder::WriteBytesExt;
@@ -14,6 +13,6 @@ pub struct FileID {
 
 impl FileID {
     pub fn string(&self) -> String {
-        format!("{},{:x}{:x}", self.volume_id, self.key, self.hash_code)
+        format!("{},{:x}{:08x}", self.volume_id, self.key, self.hash_code)
     }
 }

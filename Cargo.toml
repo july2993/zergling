@@ -12,7 +12,6 @@ dev =["clippy"]
 [dependencies]
 protobuf = "1.4"
 futures         = "0.1"
-futures-cpupool = "0.1"
 grpc            = "0.*"
 iron = "0.5"
 router = "0.5"
@@ -39,7 +38,17 @@ mime_guess = "1.8"
 lru = "0.1"
 clippy = {version = "*", optional = true}
 mime = "0.3"
+signal = "0.4"
+nix = "0.9"
+futures-cpupool = "0.1"
+lazy_static = "0.2"
+bincode = "0.9"
+tempdir = "0.3"
 
 
+[dependencies.prometheus]
+version = "0.3"
+default-features = false
+features = ["nightly", "push", "process"]
 
 

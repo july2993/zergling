@@ -1,19 +1,21 @@
 use lru::LruCache;
-use std::time::{SystemTime, Duration};
-use super::{Result, Error};
+use std::time::{Duration, SystemTime};
+use super::{Error, Result};
 use util;
 use serde_json;
 use std::collections::HashMap;
 
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Location {
     pub url: String,
     pub public_url: String,
 }
 
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LookupResult {
     pub volume_id: String,
     pub locations: Vec<Location>,
@@ -58,7 +60,7 @@ impl Looker {
     fn do_lookup(&mut self, vid: &str) -> Result<LookupResult> {
         let mut params: Vec<(&str, &str)> = vec![];
         params.push(("volumeId", vid));
-        let body = util::post(&format!("http://{}/dir/lookup", self.server), &params)?;
+        let body = util::get(&format!("http://{}/dir/lookup", self.server), &params)?;
         let res: LookupResult = serde_json::from_slice(&body)?;
         Ok(res)
     }

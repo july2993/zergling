@@ -10,7 +10,7 @@ use std::io::SeekFrom;
 use storage::{needle, volume};
 
 
-use storage::{NeedleValueMap, NeedleValue, Result};
+use storage::{NeedleValue, NeedleValueMap, Result};
 use storage::needle_value_map::MemNeedleValueMap;
 
 
@@ -37,7 +37,7 @@ struct Metric {
     file_byte_count: u64,
 }
 
-// #[derive(Default)]
+// #[derive(Debug)]
 pub struct NeedleMapper {
     nvp: Box<NeedleValueMap>,
 
@@ -57,12 +57,10 @@ impl NeedleMapper {
     pub fn new(kind: NeedleMapType) -> NeedleMapper {
         #[allow(unreachable_patterns)]
         match kind {
-            NeedleMapType::NeedleMapInMemory => {
-                NeedleMapper {
-                    nvp: Box::new(MemNeedleValueMap::new()),
-                    metric: Metric::default(),
-                }
-            }
+            NeedleMapType::NeedleMapInMemory => NeedleMapper {
+                nvp: Box::new(MemNeedleValueMap::new()),
+                metric: Metric::default(),
+            },
             _ => panic!("not support map type: {:?}", kind),
         }
     }
@@ -108,9 +106,8 @@ impl NeedleMapper {
                 break;
             }
 
-            let key = BigEndian::read_u64(
-                &bytes[needle::NEEDLE_ID_OFFSET..needle::NEEDLE_ID_OFFSET + 8],
-            );
+            let key =
+                BigEndian::read_u64(&bytes[needle::NEEDLE_ID_OFFSET..needle::NEEDLE_ID_OFFSET + 8]);
             let size = BigEndian::read_u32(
                 &bytes[needle::NEEDLE_SIZE_OFFSET..needle::NEEDLE_SIZE_OFFSET + 4],
             );

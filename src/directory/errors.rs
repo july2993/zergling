@@ -6,6 +6,7 @@ use iron::status;
 use serde_json;
 use url;
 use storage;
+use util;
 use std;
 
 
@@ -51,6 +52,12 @@ quick_error! {
             cause(err)
             description(err.description())
             display("{:?}", err)
+        }
+        Util(err: util::Error) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
         }
         ParseIntError(err: std::num::ParseIntError) {
             from()

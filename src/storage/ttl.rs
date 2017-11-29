@@ -1,11 +1,9 @@
-
 use super::Result;
 use storage::errors::Error::ParseTTL;
 use std::ops::Add;
 // use std::marker::Clone;
 
-#[derive(Serialize, Deserialize)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub enum Unit {
     Empty = 0,
     Minute = 1,
@@ -61,8 +59,7 @@ impl Unit {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Copy, Default)]
+#[derive(Serialize, Deserialize, Debug, Copy, Default)]
 pub struct TTL {
     pub count: u8,
     pub unit: Unit,
@@ -114,7 +111,6 @@ impl TTL {
                 };
                 return Ok(ttl);
             }
-
         }
 
         return Err(ParseTTL(String::from(s)));

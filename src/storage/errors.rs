@@ -1,5 +1,6 @@
 use std::result;
 use std::error;
+use bincode;
 use serde_json;
 use std;
 use grpcio;
@@ -40,6 +41,12 @@ quick_error! {
             description(err.description())
         }
         SerdeJsonError(err: serde_json::Error) {
+            from()
+            cause(err)
+            display("{:?}", err)
+            description(err.description())
+        }
+        BincodeError(err: std::boxed::Box<bincode::ErrorKind>) {
             from()
             cause(err)
             display("{:?}", err)

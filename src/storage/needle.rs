@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use super::{TTL, Result, Version};
+use super::{Error, Result, Version, TTL};
 use super::version::VERSION2;
 use std;
+use bincode::{self, deserialize, serialize, Bounded};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Cursor;
@@ -34,7 +35,7 @@ pub const NEEDLE_FLAG_OFFSET: usize = 20;
 pub const NEEDLE_ID_OFFSET: usize = 4;
 pub const NEEDLE_SIZE_OFFSET: usize = 12;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Needle {
     pub cookie: u32,
     pub id: u64,
@@ -106,6 +107,14 @@ impl Needle {
         self.cookie = rdr.read_u32::<BigEndian>().unwrap();
         self.id = rdr.read_u64::<BigEndian>().unwrap();
         self.size = rdr.read_u32::<BigEndian>().unwrap();
+    }
+
+    pub fn replicate_serialize(&self) -> Vec<u8> {
+        serialize(self, bincode::Infinite).unwrap()
+    }
+
+    pub fn replicate_deserialize(data: &[u8]) -> Result<Needle> {
+        deserialize(data).map_err(Error::from)
     }
 
     pub fn parse_path(&mut self, fid: &str) -> Result<()> {
@@ -185,7 +194,7 @@ impl Needle {
         }
 
         if idx < len && self.has_pairs() {
-            self.pairs_size = Cursor::new(bytes[idx..idx + 1].to_vec())
+            self.pairs_size = Cursor::new(bytes[idx..idx + 2].to_vec())
                 .read_u16::<BigEndian>()
                 .unwrap();
             idx += 2;
@@ -206,6 +215,7 @@ impl Needle {
         self.data_size = self.data.len() as u32;
         self.name_size = self.name.len() as u8;
         self.mime_size = self.mime.len() as u8;
+        self.pairs_size = self.pairs.len() as u16;
 
         if self.data_size > 0 {
             self.size = 4 + self.data_size + 1; // one for flag;
@@ -222,7 +232,7 @@ impl Needle {
                 self.size += TTL_BYTES_LENGTH as u32;
             }
             if self.has_pairs() {
-                self.size += self.pairs_size as u32;
+                self.size += 2 + self.pairs.len() as u32;
             }
         } else {
             self.size = 0
@@ -260,16 +270,20 @@ impl Needle {
                 w.write_all(&self.ttl.bytes())?;
             }
 
-            // not supporst
             if self.has_pairs() {
-                panic!("not suppose");
+                bytes
+                    .write_u16::<BigEndian>(self.pairs.len() as u16)
+                    .unwrap();
+                w.write_all(&bytes)?;
+                bytes.clear();
+                w.write_all(&self.pairs)?;
             }
         }
 
         let mut padding = 0;
         if (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE != 0 {
-            padding = NEEDLE_PADDING_SIZE -
-                (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
+            padding = NEEDLE_PADDING_SIZE
+                - (NEEDLE_HEADER_SIZE + self.size + NEEDLE_CHECKSUM_SIZE) % NEEDLE_PADDING_SIZE;
         }
 
         bytes.write_u32::<BigEndian>(self.checksum).unwrap();
@@ -314,8 +328,8 @@ impl Needle {
         };
 
         self.checksum = Cursor::new(
-            &bytes[(NEEDLE_HEADER_SIZE + size) as usize..
-                       (NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) as usize],
+            &bytes[(NEEDLE_HEADER_SIZE + size) as usize
+                       ..(NEEDLE_HEADER_SIZE + size + NEEDLE_CHECKSUM_SIZE) as usize],
         ).read_u32::<BigEndian>()
             .unwrap();
         let cal_checksum = crc32::checksum_castagnoli(&self.data);
@@ -357,6 +371,9 @@ impl Needle {
     }
     pub fn has_pairs(&self) -> bool {
         self.flags & FLAG_HAS_PAIRS > 0
+    }
+    pub fn set_has_pairs(&mut self) {
+        self.flags |= FLAG_HAS_PAIRS
     }
 
     pub fn has_last_modified_date(&self) -> bool {

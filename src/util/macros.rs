@@ -60,7 +60,7 @@ macro_rules! count_args {
 /// assert_eq!(m["key2"], "value2");
 /// # }
 /// ```
-/// 
+///
 */
 #[macro_export]
 macro_rules! map {

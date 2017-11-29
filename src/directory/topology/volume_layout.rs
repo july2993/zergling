@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -6,14 +5,14 @@ use rand;
 use std::sync::Arc;
 use std::cell::RefCell;
 
-use storage::{VolumeId, ReplicaPlacement, TTL};
+use storage::{ReplicaPlacement, VolumeId, TTL};
 use directory::topology::{DataNode, VolumeGrowOption, VolumeInfo};
 
-use directory::errors::{Result, Error};
+use directory::errors::{Error, Result};
 use storage;
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct VolumeLayout {
     pub rp: ReplicaPlacement,
     pub ttl: Option<TTL>,
@@ -22,8 +21,7 @@ pub struct VolumeLayout {
     pub writable_volumes: Vec<VolumeId>,
     pub readonly_volumes: HashSet<VolumeId>,
     pub oversize_volumes: HashSet<VolumeId>,
-
-    pub vid2location: HashMap<VolumeId, Vec<Arc<RefCell<DataNode>>>>,
+    #[serde(skip)] pub vid2location: HashMap<VolumeId, Vec<Arc<RefCell<DataNode>>>>,
 }
 
 impl VolumeLayout {
@@ -49,8 +47,8 @@ impl VolumeLayout {
         for vid in &self.writable_volumes {
             for node in self.vid2location.get(vid).unwrap_or(&vec![]) {
                 let bnode = node.borrow();
-                if bnode.id == option.data_node && bnode.get_rack_id() == option.rack &&
-                    bnode.get_data_center_id() == option.data_center
+                if bnode.id == option.data_node && bnode.get_rack_id() == option.rack
+                    && bnode.get_data_center_id() == option.data_center
                 {
                     count += 1;
                 }
@@ -74,27 +72,24 @@ impl VolumeLayout {
         for vid in &self.writable_volumes {
             match self.vid2location.get(&vid) {
                 None => (),
-                Some(location) => {
-                    for node in location {
-                        let dn = node.borrow();
-                        if option.data_center != "" &&
-                            option.data_center != dn.get_data_center_id() ||
-                            option.rack != "" && option.rack != dn.get_rack_id() ||
-                            option.data_node != "" && option.data_node != dn.id
-                        {
-                            continue;
-                        }
-
-                        counter += 1;
-                        if rand::random::<i64>() % counter < 1 {
-                            let mut lo = vec![];
-                            for n in location {
-                                lo.push(n.clone());
-                            }
-                            ret = (*vid, lo);
-                        }
+                Some(location) => for node in location {
+                    let dn = node.borrow();
+                    if option.data_center != "" && option.data_center != dn.get_data_center_id()
+                        || option.rack != "" && option.rack != dn.get_rack_id()
+                        || option.data_node != "" && option.data_node != dn.id
+                    {
+                        continue;
                     }
-                }
+
+                    counter += 1;
+                    if rand::random::<i64>() % counter < 1 {
+                        let mut lo = vec![];
+                        for n in location {
+                            lo.push(n.clone());
+                        }
+                        ret = (*vid, lo);
+                    }
+                },
             }
         }
 
@@ -137,12 +132,10 @@ impl VolumeLayout {
 
         for node in list.iter() {
             match node.borrow().volumes.get(&v.id) {
-                Some(v) => {
-                    if v.read_only {
-                        self.remove_from_writable(v.id);
-                        self.readonly_volumes.insert(v.id);
-                    }
-                }
+                Some(v) => if v.read_only {
+                    self.remove_from_writable(v.id);
+                    self.readonly_volumes.insert(v.id);
+                },
                 None => {
                     self.remove_from_writable(v.id);
                     self.readonly_volumes.remove(&v.id);
@@ -158,7 +151,6 @@ impl VolumeLayout {
             self.remove_from_writable(v.id);
             self.set_oversized_if_need(v);
         }
-
     }
 
     fn set_oversized_if_need(&mut self, v: &VolumeInfo) {

@@ -2,14 +2,16 @@ use std::sync::{Arc, Mutex};
 use super::Sequencer;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemorySequencer {
     counter: Arc<Mutex<u64>>,
 }
 
 impl MemorySequencer {
     pub fn new() -> MemorySequencer {
-        MemorySequencer { counter: Arc::new(Mutex::new(1)) }
+        MemorySequencer {
+            counter: Arc::new(Mutex::new(1)),
+        }
     }
 }
 

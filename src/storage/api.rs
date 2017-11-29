@@ -1,41 +1,39 @@
-use hyper;
-use std::io::Read;
-use futures::future::{self, Future};
-use futures::sync::oneshot;
-use std::fmt::{self, Debug, Display, Formatter};
-use hyper::header;
-use crc::crc32;
-use operation;
-use hyper::mime;
-use std::collections::HashMap;
-use hyper::header::{Headers, LastModified, IfModifiedSince, HttpDate, ContentType, ContentLength};
-use hyper::{StatusCode, Method};
-use hyper::server::{Request, Response, Service};
-use std::time::{SystemTime, Duration};
-use std::thread;
-use grpcio::*;
-use futures::*;
-use pb;
-use std::ops::Add;
-use storage;
-use url::Url;
-use super::{Store, NeedleMapType};
 use std;
-use std::time;
+use std::io::Read;
+use std::fmt::{self, Debug, Display, Formatter};
+use std::collections::HashMap;
+use std::ops::Add;
 use std::error::Error;
-use storage::{Result, VolumeInfo, Needle, TTL, VolumeId};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::boxed::FnBox;
 use std::sync::Arc;
 use std::path::Path;
-use libflate::gzip::{Encoder, Decoder};
+use std::time::{Duration, SystemTime};
+use std::{thread, time};
+use futures::future::{self, Future};
+use futures::sync::oneshot;
+use crc::crc32;
+use operation;
+use hyper::{self, header, mime, Method, StatusCode};
+use hyper::header::{ContentLength, ContentType, Headers, HttpDate, IfModifiedSince, LastModified};
+use hyper::server::{Request, Response, Service};
+use grpcio::*;
+use futures::*;
+use pb;
+use storage;
+use url::Url;
+use super::{NeedleMapType, Store};
+use storage::{Needle, Result, VolumeId, VolumeInfo, TTL};
+use libflate::gzip::{Decoder, Encoder};
 use multipart;
 use multipart::server::MultipartData;
 use serde_json;
-use util;
+use util::{self, metrics_handler, read_req_body_full};
 use mime_guess;
 use operation::Looker;
+use storage::needle::PAIR_NAME_PREFIX;
+use metrics::*;
 
 const PHRASE: &'static str = "Hello, World!";
 pub type APICallback = Box<FnBox(Result<Response>) + Send>;
@@ -44,15 +42,19 @@ pub enum Msg {
     API { req: Request, cb: APICallback },
 }
 
-fn make_callback() -> (Box<FnBox(Result<Response>) + Send>, oneshot::Receiver<Result<Response>>) {
+fn make_callback() -> (
+    Box<FnBox(Result<Response>) + Send>,
+    oneshot::Receiver<Result<Response>>,
+) {
     let (tx, rx) = oneshot::channel();
-    let callback = move |resp| { tx.send(resp).unwrap(); };
+    let callback = move |resp| {
+        tx.send(resp).unwrap();
+    };
     (Box::new(callback), rx)
 }
 
 #[derive(Clone)]
 pub struct Context {
-    pub sender: Sender<Msg>,
     pub store: Arc<Mutex<Store>>,
     pub needle_map_kind: NeedleMapType,
     pub read_redirect: bool,
@@ -61,15 +63,39 @@ pub struct Context {
     pub looker: Arc<Mutex<Looker>>,
 }
 
-impl Context {
-    pub fn run(&mut self, receiver: Receiver<Msg>) -> Result<()> {
-        for msg in receiver.iter() {
-            self.handle_msg(msg);
-        }
+#[derive(Clone)]
+pub struct HTTPContext {
+    pub sender: Sender<Msg>,
+}
 
-        panic!("receiver hung up");
+impl Context {
+    pub fn run(&mut self, receiver: Receiver<Msg>) {
+        let alrecv = Arc::new(Mutex::new(receiver));
+
+        let mut threads = vec![];
+        for _i in 0..16 {
+            let mut ctx = self.clone();
+            let recv = alrecv.clone();
+            let t = thread::spawn(move || {
+                loop {
+                    match recv.lock().unwrap().recv() {
+                        Ok(msg) => ctx.handle_msg(msg),
+                        Err(err) => {
+                            info!("recv msg err: {}", err);
+                            return;
+                        }
+                    };
+                }
+            });
+            threads.push(t);
+        }
+        for t in threads {
+            t.join().unwrap();
+        }
+        info!("handle msg quit...");
     }
 
+    #[allow(dead_code)]
     pub fn get_master_node(&self) -> String {
         return self.master_node.clone();
     }
@@ -78,8 +104,18 @@ impl Context {
         match msg {
             Msg::API { req, cb } => {
                 debug!("hanle msg: [{}] {}", req.method(), req.path());
+                let method = req.method().clone();
+                HTTP_REQ_COUNTER_VEC
+                    .with_label_values(&["all", method.as_ref()])
+                    .inc_by(1.0)
+                    .unwrap();
+                let timer = HTTP_REQ_HISTOGRAM_VEC
+                    .with_label_values(&["all", method.as_ref()])
+                    .start_coarse_timer();
+                // .start_timer();
+
                 match (req.method(), req.path()) {
-                    (&Method::Get, "/stats") => {
+                    (&Method::Get, "/status") => {
                         let handle = status_handler(self, &req);
                         cb(handle);
                     }
@@ -91,12 +127,16 @@ impl Context {
                         let handle = test_handler(&req);
                         cb(handle);
                     }
+                    (&Method::Get, "/metrics") => {
+                        let handle = Ok(metrics_handler(&req));
+                        cb(handle);
+                    }
                     (&Method::Post, "/test_multipart") => {
                         let handle = test_multipart_handler(req);
                         cb(handle);
                     }
                     (&Method::Post, "/test_echo") => {
-                        let handle = test_echo(req);
+                        let handle = util::test_echo(req).map_err(storage::Error::from);
                         cb(handle);
                     }
                     (&Method::Get, _) => {
@@ -111,67 +151,23 @@ impl Context {
                         let handle = post_handler(self, req);
                         cb(handle);
                     }
+                    (&Method::Delete, _) => {
+                        let handle = delete_handler(self, req);
+                        cb(handle);
+                    }
                     (_, _) => {
                         let handle = test_handler(&req);
                         cb(handle);
                     }
                 }
+                timer.observe_duration();
             }
-        }
-    }
-
-    pub fn heartbeat(&self) {
-        loop {
-            warn!("start heartbeat....");
-            self.start_heartbeat();
-            warn!("heartbeat end....");
-            thread::sleep(Duration::from_secs(self.pulse_seconds as u64));
-        }
-    }
-
-    pub fn start_heartbeat(&self) {
-        let env = Arc::new(Environment::new(2));
-        let channel = ChannelBuilder::new(env).connect(&self.master_node);
-        let client = pb::zergling_grpc::ZerglingClient::new(channel);
-
-        let (mut sink, mut receiver) = client.send_heartbeat();
-
-        let h = thread::spawn(move || loop {
-            match receiver.into_future().wait() {
-                Ok((Some(beat), r)) => {
-                    debug!("recv: {:?}", beat);
-                    receiver = r;
-                }
-                Ok((None, _)) => break,
-                Err((e, _)) => {
-                    error!("RPC failed: {:?}", e);
-                    break;
-                }
-            }
-        });
-
-        loop {
-            let beat = self.store.lock().unwrap().collect_heartbeat();
-            match sink.send((beat, WriteFlags::default())).wait() {
-                Ok(ret) => sink = ret,
-                Err(err) => {
-                    error!("send err: {}", err);
-                    break;
-                }
-            }
-
-            thread::sleep(Duration::from_secs(self.pulse_seconds as u64));
-        }
-
-        // sink.close();
-        if let Err(err) = h.join() {
-            error!("join err: {:?}", err);
         }
     }
 }
 
 
-impl Service for Context {
+impl Service for HTTPContext {
     type Request = Request;
     type Response = Response;
     type Error = hyper::Error;
@@ -179,28 +175,44 @@ impl Service for Context {
     type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
     fn call(&self, req: Request) -> Self::Future {
+        let info = format!("[{}]-{}", req.method(), req.path());
+
         let (cb, future) = make_callback();
         self.sender.send(Msg::API { req, cb }).unwrap();
 
+        let recv_time = time::SystemTime::now();
+
         let future = future
             .map_err(|_err| {
-                // TODO more specify error?
+                // _err is futures::Canceled
                 hyper::Error::Timeout
             })
             .map(|v| match v {
                 Ok(resp) => resp,
                 Err(err) => {
                     debug!("err: {:?}", err);
-                    let s = format!("{{\"error\": {}}}", err.description());
+                    let s = format!("{{\"error\": \"{}\"}}", err.description());
                     Response::new()
                         .with_status(StatusCode::NotAcceptable)
                         .with_header(ContentLength(s.len() as u64))
                         .with_body(s)
                 }
+            })
+            .map(move |v| {
+                let now = time::SystemTime::now();
+                let d = now.duration_since(recv_time).unwrap();
+                info!(
+                    "{} {:?}",
+                    info,
+                    d.as_secs() as f64 * 1000.0 + d.subsec_nanos() as f64 / 1000000.0
+                );
+                v
             });
         Box::new(future)
     }
 }
+
+
 
 pub fn test_handler(_req: &Request) -> Result<Response> {
     Ok(
@@ -261,33 +273,7 @@ pub fn assign_volume_handler(ctx: &Context, req: &Request) -> Result<Response> {
     Ok(resp)
 }
 
-fn read_req_body_full(body: hyper::Body) -> Result<Vec<u8>> {
-    let mut data: Vec<u8> = vec![];
-    for item_res in body.wait() {
-        match item_res {
-            Ok(item) => {
-                // debug!("{:?}", item);
-                for u in item {
-                    data.push(u);
-                }
-            }
-            Err(err) => {
-                debug!("{:?}", err);
-            }
-        }
-    }
 
-    Ok(data)
-}
-
-pub fn test_echo(req: hyper::server::Request) -> Result<Response> {
-    let data = read_req_body_full(req.body())?;
-
-    let resp = Response::new()
-        .with_header(ContentLength(data.len() as u64))
-        .with_body(data);
-    Ok(resp)
-}
 
 pub fn get_boundary(req: &Request) -> Result<String> {
     if *req.method() != Method::Post {
@@ -331,7 +317,15 @@ pub struct ParseUploadResp {
 
 impl Display for ParseUploadResp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "file_name: {}, data_len: {}, mime_type: {}, ttl minutes: {}, is_chunked_file: {}", self.file_name, self.data.len(), self.mime_type, self.ttl.minutes(), self.is_chunked_file)
+        write!(
+            f,
+            "file_name: {}, data_len: {}, mime_type: {}, ttl minutes: {}, is_chunked_file: {}",
+            self.file_name,
+            self.data.len(),
+            self.mime_type,
+            self.ttl.minutes(),
+            self.is_chunked_file
+        )
     }
 }
 
@@ -341,20 +335,21 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
     let mut file_name = String::new();
     let mut data: Vec<u8> = vec![];
     let mut mime_type = String::new();
-    let pair_map: HashMap<String, String> = HashMap::new();
+    let mut pair_map: HashMap<String, String> = HashMap::new();
 
     let modified_time: u64;
     let ttl: TTL;
     let is_chunked_file: bool;
-    //
-    //
-    // TODO parse custom pairs header
+
+    for hv in req.headers().iter() {
+        if hv.name().starts_with(PAIR_NAME_PREFIX) {
+            pair_map.insert(hv.name().to_owned(), hv.value_string());
+        }
+    }
 
     let boundary = get_boundary(&req)?;
     let body_data = read_req_body_full(req.body())?;
     debug!("body_data len: {}", body_data.len());
-    // debug!("body_data :\n {}", String::from_utf8(body_data.clone().to_vec()).unwrap());
-    // debug!("body_data :\n {:?}", &body_data);
     let mut mpart = multipart::server::Multipart::with_body(&body_data[..], boundary);
 
     // get first file with file_name
@@ -366,9 +361,11 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
                 if file.filename.is_some() {
                     file_name = file.filename.clone().unwrap();
                 }
-                #[allow(deprecated)] post_mtype.push_str(file.content_type().0.as_str());
+                #[allow(deprecated)]
+                post_mtype.push_str(file.content_type().0.as_str());
                 post_mtype.push_str("/");
-                #[allow(deprecated)] post_mtype.push_str(file.content_type().1.as_str());
+                #[allow(deprecated)]
+                post_mtype.push_str(file.content_type().1.as_str());
                 // file.content_type().TopLevel.as_str()
                 data.clear();
                 file.read_to_end(&mut data)?;
@@ -381,8 +378,8 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
         }
     }
 
-    is_chunked_file = util::parse_bool(params.get("cm").unwrap_or(&"false".to_string()))
-        .unwrap_or(false);
+    is_chunked_file =
+        util::parse_bool(params.get("cm").unwrap_or(&"false".to_string())).unwrap_or(false);
 
     let mut guess_mtype = String::new();
     if !is_chunked_file {
@@ -398,10 +395,8 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
 
         if post_mtype != "" && guess_mtype != post_mtype {
             mime_type = post_mtype.clone(); // only return if not deductable, so my can save it only when can't deductable from file name
-            // guess_mtype = post_mtype.clone();
+                                            // guess_mtype = post_mtype.clone();
         }
-
-
         // don't auto gzip and change filename like seaweed
     }
 
@@ -430,18 +425,126 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
     Ok(resp)
 }
 
+pub fn delete_handler(ctx: &mut Context, req: Request) -> Result<Response> {
+    let params = util::get_request_params(&req);
+    let (svid, fid, _, _, _) = parse_url_path(req.path());
+    let vid = svid.parse::<u32>()?;
+    let is_replicate = if Some(&"replicate".to_owned()) == params.get("type") {
+        true
+    } else {
+        false
+    };
+
+    let mut n: Needle = Needle::default();
+    let path: String = req.path().to_string();
+    n.parse_path(&fid)?;
+
+    let cookie = n.cookie;
+
+    {
+        let mut store = ctx.store.lock().unwrap();
+        store.read_volume_needle(vid, &mut n)?;
+        if cookie != n.cookie {
+            info!(
+                "cookie not match from {:?} recv: {} file is {}",
+                req.remote_addr(),
+                cookie,
+                n.cookie
+            );
+            return Ok(util::error_json_response("cookie not match"));
+        }
+    }
+
+    let size = replicate_delete(ctx, &path, vid, &mut n, is_replicate)?;
+    let j = json!({ "size": &size }).to_string();
+
+    debug!("delete resp: {}", j);
+
+    let response = Response::new()
+        .with_header(ContentLength(j.len() as u64))
+        .with_body(j);
+
+    Ok(response)
+}
+
+fn replicate_delete(
+    ctx: &mut Context,
+    path: &str,
+    vid: VolumeId,
+    needle: &mut Needle,
+    is_replicate: bool,
+) -> Result<u32> {
+    let size: u32;
+    let self_url: String;
+
+    {
+        let mut s = ctx.store.lock().unwrap();
+        self_url = format!("{}:{}", s.ip, s.port);
+        size = s.delete_volume_needle(vid, needle)?;
+        if is_replicate {
+            return Ok(size);
+        }
+
+        let v = s.find_volume_mut(vid).unwrap();
+        debug!("write volume: {}", v);
+        if !v.need_to_replicate() {
+            return Ok(size);
+        }
+    }
+
+    let mut params: Vec<(&str, &str)> = vec![];
+    params.push(("type", "replicate"));
+    let res = ctx.looker.lock().unwrap().lookup(&vid.to_string())?;
+    debug!("get lookup res: {:?}", res);
+
+    // TODO concurrent replicate
+    for location in res.locations.iter() {
+        if location.url == self_url {
+            continue;
+        }
+        let url = format!("http://{}{}", &location.url, path);
+        util::delete(&url, &params)
+            .map_err(|e| storage::Error::String(e))
+            .and_then(|body| {
+                let value: serde_json::Value = serde_json::from_slice(&body)?;
+                if let Some(err) = value["error"].as_str() {
+                    if err.len() <= 0 {
+                        return Ok(());
+                    } else {
+                        return Err(box_err!("wirte {} err: {}", location.url, err));
+                    }
+                }
+
+                Ok(())
+            })?;
+    }
+    Ok(size)
+}
+
 pub fn post_handler(ctx: &mut Context, req: Request) -> Result<Response> {
     let params = util::get_request_params(&req);
     let (svid, _, _, _, _) = parse_url_path(req.path());
     let vid = svid.parse::<u32>()?;
+    let is_replicate = if Some(&"replicate".to_owned()) == params.get("type") {
+        true
+    } else {
+        false
+    };
 
     debug!("post vid: {}", vid);
 
-    let mut n = new_needle_from_request(req)?;
+    let path: String = req.path().to_string();
+    let mut n: Needle;
+    if !is_replicate {
+        n = new_needle_from_request(req)?;
+    } else {
+        let body = read_req_body_full(req.body())?;
+        n = Needle::replicate_deserialize(&body)?;
+    }
 
     debug!("post needle: {}", n);
 
-    let size = replicate_write(ctx, &params, vid, &mut n)?;
+    let size = replicate_write(ctx, &path, vid, &mut n, is_replicate)?;
 
     let mut result = operation::UploadResult::default();
 
@@ -472,6 +575,11 @@ fn new_needle_from_request(req: Request) -> Result<Needle> {
 
     let mut n = Needle::default();
     n.data = resp.data;
+
+    if resp.pair_map.len() > 0 {
+        n.set_has_pairs();
+        n.pairs = serde_json::to_vec(&resp.pair_map)?;
+    }
 
     if resp.file_name.len() > 0 {
         n.name = resp.file_name.as_bytes().to_vec();
@@ -543,7 +651,12 @@ pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     let count = store.read_volume_needle(vid, &mut n)?;
     debug!("read {} byte for {}", count, fid);
     if n.cookie != cookie {
-        info!("cookie not match from {:?} recv: {} file is {}", req.remote_addr(), cookie, n.cookie);
+        info!(
+            "cookie not match from {:?} recv: {} file is {}",
+            req.remote_addr(),
+            cookie,
+            n.cookie
+        );
         resp.set_status(StatusCode::NotFound);
         return Ok(resp);
     }
@@ -570,13 +683,12 @@ pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     }
 
     if n.has_pairs() {
-        // TODO support pairs
-        // https://hyper.rs/hyper/0.8.0/hyper/header/index.html
-        // let j: serde_json::Value = serde_json::from_slice(&n.pairs)?;
-        // for (k, v) in j.as_object().unwrap() {
-        //     debug!("{} {}", k, v);
-        //     resp.headers_mut().set_raw(k, v.as_str().unwrap());
-        // }
+        let j: serde_json::Value = serde_json::from_slice(&n.pairs)?;
+        for (k, v) in j.as_object().unwrap() {
+            debug!("{} {}", k, v);
+            let s = v.as_str().unwrap();
+            resp.headers_mut().set_raw(k.clone(), s);
+        }
     }
 
     // chunk file
@@ -637,12 +749,11 @@ fn write_response_content(
     _resp: Response,
     data: &Vec<u8>,
 ) -> Response {
-
     //TODO handle range contenttype and...
     let len = data.len() as u64;
-    let resp = _resp.with_header(ContentLength(len)).with_body(
-        data.clone(),
-    );
+    let resp = _resp
+        .with_header(ContentLength(len))
+        .with_body(data.clone());
 
 
     resp
@@ -655,6 +766,7 @@ fn write_response_content(
 // http://localhost:8080/3/01637037d6
 // http://localhost:8080/3,01637037d6
 // @return vid, fid, filename, ext, is_volume_id_only
+// /3/01637037d6/my_preferred_name.jpg -> (3,01637037d6,my_preferred_name.jpg,jpg,false)
 fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
     let vid: String;
     let mut fid: String;
@@ -711,7 +823,6 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
 
             vid = path[1..end].to_string();
         }
-
     };
 
     (vid, fid, filename, ext, is_volume_id_only)
@@ -720,48 +831,55 @@ fn parse_url_path(path: &str) -> (String, String, String, String, bool) {
 
 fn replicate_write(
     ctx: &mut Context,
-    params: &HashMap<String, String>,
-    // master: &str,
-    // s: &mut Store,
+    path: &str,
     vid: VolumeId,
     needle: &mut Needle,
+    is_replicate: bool,
 ) -> Result<u32> {
     let size: u32;
+    let self_url: String;
     {
         let mut s = ctx.store.lock().unwrap();
+        self_url = format!("{}:{}", s.ip, s.port);
         size = s.write_volume_needle(vid, needle)?;
-        if let Some(v) = params.get("type") {
-            if v == "replicate" {
-                return Ok(size);
-            }
+        if is_replicate {
+            return Ok(size);
         }
 
         let v = s.find_volume_mut(vid).unwrap();
+        debug!("write volume: {}", v);
         if !v.need_to_replicate() {
             return Ok(size);
         }
     }
 
-    let last_modified = needle.last_modified.to_string();
     let mut params: Vec<(&str, &str)> = vec![];
     params.push(("type", "replicate"));
-    if needle.last_modified > 0 {
-        params.push(("ts", &last_modified));
-    }
-
-    if needle.is_chunk_manifest() {
-        params.push(("cm", "true"));
-    }
-
-    // don't support custom header pair like seaweed
+    let data = needle.replicate_serialize();
 
     let res = ctx.looker.lock().unwrap().lookup(&vid.to_string())?;
+    debug!("get lookup res: {:?}", res);
 
     // TODO concurrent replicate
     for location in res.locations.iter() {
-        util::post(&location.url, &params).map_err(|e| {
-            storage::Error::String(e)
-        })?;
+        if location.url == self_url {
+            continue;
+        }
+        let url = format!("http://{}{}", &location.url, path);
+        util::post(&url, &params, &data)
+            .map_err(|e| storage::Error::String(e))
+            .and_then(|body| {
+                let value: serde_json::Value = serde_json::from_slice(&body)?;
+                if let Some(err) = value["error"].as_str() {
+                    if err.len() <= 0 {
+                        return Ok(());
+                    } else {
+                        return Err(box_err!("wirte {} err: {}", location.url, err));
+                    }
+                }
+
+                Ok(())
+            })?;
     }
 
     Ok(size)

@@ -1,25 +1,31 @@
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::channel;
 use grpcio::*;
 use futures::*;
 use grpcio::Error as GError;
 use pb::zergling_grpc;
 use super::topology::Topology;
-use super::sequencer::{Sequencer, MemorySequencer};
-use grpcio::{ClientStreamingSink, RequestStream, RpcContext, RpcStatus, RpcStatusCode, UnarySink,
-             DuplexSink};
+use super::sequencer::{MemorySequencer, Sequencer};
+use grpcio::{self, ClientStreamingSink, DuplexSink, RequestStream, RpcContext, RpcStatus,
+             RpcStatusCode, UnarySink};
 use futures::future::Future;
 use hyper::header::ContentLength;
 use hyper::server::{Http, Request, Response, Service};
+use std::thread;
+use futures_cpupool::CpuPool;
 use futures::Stream;
+use futures::sync::oneshot;
 use super::api::*;
 use pb;
 use pb::zergling_grpc::Zergling as ZService;
 use pb::zergling::*;
 use directory::topology::VolumeGrow;
 use storage;
+use std::cell::Cell;
 
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct Server {
+    pub bind_ip: String,
     pub ip: String,
     pub port: u16,
     pub meta_folder: String,
@@ -30,11 +36,16 @@ pub struct Server {
     pub garbage_threshold: f64,
     pub topo: Arc<Mutex<Topology>>,
     pub vg: Arc<Mutex<VolumeGrow>>,
+    pub grpc_server: grpcio::Server,
+
+    shundown: Option<oneshot::Sender<()>>,
+    handles: Vec<Option<thread::JoinHandle<()>>>,
 }
 
 impl Server {
     // TODO: add whiteList sk
     pub fn new(
+        bind_ip: &str,
         ip: &str,
         port: u16,
         meta_folder: &str,
@@ -44,54 +55,98 @@ impl Server {
         garbage_threshold: f64,
         seq: MemorySequencer,
     ) -> Server {
+        let topo = Arc::new(Mutex::new(Topology::new(
+            seq,
+            volume_size_limit_mb * 1024 * 1024,
+            pluse_seconds,
+        )));
+
+        let env = Arc::new(Environment::new(2));
+        let service = zergling_grpc::create_zergling(GrpcServer {
+            volume_size_limit_mb: volume_size_limit_mb,
+            topo: topo.clone(),
+        });
+        let server = ServerBuilder::new(env)
+            .register_service(service)
+            .bind(bind_ip, port + 1)
+            .build()
+            .unwrap();
+
         let dir = Server {
+            bind_ip: bind_ip.to_owned(),
             ip: String::from(ip),
             volume_size_limit_mb: volume_size_limit_mb,
             port: port,
             garbage_threshold: garbage_threshold,
             default_replica_placement: default_replica_placement,
             meta_folder: meta_folder.to_string(),
-            topo: Arc::new(Mutex::new(
-                Topology::new(seq, volume_size_limit_mb, pluse_seconds),
-            )),
             vg: Arc::new(Mutex::new(VolumeGrow::new())),
+            topo: topo.clone(),
+            shundown: None,
+            grpc_server: server,
+            handles: vec![],
         };
 
         dir
     }
 
+    pub fn stop(&mut self) {
+        self.grpc_server.shutdown();
+        self.shundown.take().unwrap().send(()).unwrap();
+        for h in self.handles.iter_mut() {
+            h.take().unwrap().join().unwrap();
+        }
+    }
 
-    pub fn serve(&self, bind_ip: &str) {
-        let env = Arc::new(Environment::new(2));
-        let service = zergling_grpc::create_zergling(self.clone());
-        let mut server = ServerBuilder::new(env)
-            .register_service(service)
-            .bind(bind_ip, self.port + 1)
-            .build()
-            .unwrap();
-        server.start();
+    pub fn start(&mut self) {
+        let (sender, receiver) = channel();
+        self.grpc_server.start();
 
-        let ctx = Context {
+        let mut ctx = Context {
             topo: self.topo.clone(),
             vg: self.vg.clone(),
             default_replica_placement: self.default_replica_placement,
             ip: self.ip.clone(),
             port: self.port,
+            cpu_pool: CpuPool::new(16),
         };
 
-        let mut addr_str = bind_ip.to_string();
+        let api_handle = thread::spawn(move || {
+            ctx.run(receiver);
+        });
+        self.handles.push(Some(api_handle));
+
+
+        // http server
+        let http = super::api::HTTPContext { sender: sender };
+        let (tx, rx) = oneshot::channel();
+        self.shundown = Some(tx);
+
+        let mut addr_str = self.bind_ip.clone();
         addr_str.push_str(":");
         addr_str.push_str(&self.port.to_string());
         let addr = addr_str.parse().unwrap();
-        let server = Http::new().bind(&addr, move || Ok(ctx.clone())).unwrap();
-        server.run().unwrap();
+
+        // server.run().unwrap();
+        let handle = thread::spawn(move || {
+            let server = Http::new().bind(&addr, move || Ok(http.clone())).unwrap();
+            server.run_until(rx.map_err(|_| ())).unwrap();
+        });
+
+        self.handles.push(Some(handle));
     }
 }
 
 
 // start grpc
 //
-impl ZService for Server {
+#[derive(Clone)]
+struct GrpcServer {
+    pub volume_size_limit_mb: u64,
+    pub topo: Arc<Mutex<Topology>>,
+}
+
+impl ZService for GrpcServer {
     fn send_heartbeat(
         &self,
         ctx: RpcContext,
@@ -107,7 +162,7 @@ impl ZService for Server {
 
         let to_send = stream
             .map(move |heartbeat| {
-                debug!("recv heartbeat: {:?}", heartbeat);
+                // debug!("recv heartbeat: {:?}", heartbeat);
 
                 let mut topo = topo.lock().unwrap();
                 topo.sequence.set_max(heartbeat.max_file_key);
@@ -163,13 +218,12 @@ impl ZService for Server {
                 resp.volumeSizeLimit = volume_size_limit_mb;
 
                 stream::iter_ok::<_, GError>(vec![(resp, WriteFlags::default())])
-
             })
             .flatten();
 
-        let f = sink.send_all(to_send).map(|_| {}).map_err(|e| {
-            error!("failed to route chat: {:?}", e)
-        });
+        let f = sink.send_all(to_send)
+            .map(|_| {})
+            .map_err(|e| error!("failed to send heartbeat response: {:?}", e));
         ctx.spawn(f)
     }
 }

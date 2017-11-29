@@ -1,11 +1,13 @@
 #![feature(plugin)]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 
-extern crate zergling;
+extern crate clap;
+extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate env_logger;
-extern crate clap;
+extern crate nix;
+extern crate signal;
+extern crate zergling;
 
 
 use clap::{App, Arg, SubCommand};
@@ -16,15 +18,12 @@ use zergling::storage::Server as VServer;
 use zergling::directory::sequencer::MemorySequencer;
 use zergling::storage::NeedleMapType;
 use zergling::util;
+use signal::trap::Trap;
+use nix::sys::signal::{SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGTERM};
 
 
 fn main() {
     util::init_log();
-
-    debug!("this is printed by default");
-    info!("this is printed by default");
-    warn!("this is printed by default");
-    error!("this is printed by default");
 
     let matches = App::new("zergling")
         .arg(
@@ -36,9 +35,12 @@ fn main() {
         .subcommand(
             SubCommand::with_name("master")
                 .about("master server")
-                .arg(Arg::with_name("ip").long("ip").takes_value(true).help(
-                    "ip address default localhost",
-                ))
+                .arg(
+                    Arg::with_name("ip")
+                        .long("ip")
+                        .takes_value(true)
+                        .help("ip address default localhost"),
+                )
                 .arg(Arg::with_name("mdir").long("mdir").takes_value(true))
                 .arg(Arg::with_name("port").long("port").takes_value(true))
                 .arg(
@@ -70,9 +72,12 @@ fn main() {
                         .long("pulse_seconds")
                         .takes_value(true),
                 )
-                .arg(Arg::with_name("ip").long("ip").takes_value(true).help(
-                    "ip address default localhost",
-                ))
+                .arg(
+                    Arg::with_name("ip")
+                        .long("ip")
+                        .takes_value(true)
+                        .help("ip address default localhost"),
+                )
                 .arg(Arg::with_name("port").long("port").takes_value(true))
                 .arg(
                     Arg::with_name("public_url")
@@ -99,14 +104,17 @@ fn main() {
                         .long("dir")
                         .takes_value(true)
                         .multiple(true)
-                        .long_help("directories to store data files. -dir dir_name:max_volume_counts  like -dir /data1:7 max_volume_counts default 7 if not specified"),
+                        .long_help(
+                            "directories to store data files. -dir dir_name:max_volume_counts
+                                   like -dir /data1:7 max_volume_counts default 7 if not specified",
+                        ),
                 )
                 .arg(
                     Arg::with_name("master_server")
                         .long("master_server")
                         .takes_value(true)
                         .long_help("master server location")
-                        .default_value("localhost:9334"),
+                        .default_value("localhost:9333"),
                 ),
         )
         .get_matches();
@@ -136,7 +144,8 @@ fn main() {
 
         let seq = MemorySequencer::new();
 
-        let dir = Server::new(
+        let mut dir = Server::new(
+            ip_bind,
             ip,
             port,
             mdir,
@@ -146,11 +155,14 @@ fn main() {
             garbage_threshold,
             seq,
         );
-        dir.serve(ip_bind);
+        dir.start();
+        handle_signal();
+        dir.stop();
     }
 
     if let Some(_matches) = matches.subcommand_matches("volume") {
         println!("starting volumn server....");
+        let ip_bind = _matches.value_of("ip.bind").unwrap_or("0.0.0.0");
         let ip = _matches.value_of("ip").unwrap_or("127.0.0.1");
         let pluse = _matches
             .value_of("pulse_seconds")
@@ -159,7 +171,7 @@ fn main() {
         let port: u16 = _matches
             .value_of("port")
             .map(|s| s.parse().unwrap())
-            .unwrap_or(9333);
+            .unwrap_or(8080);
 
         let public_url = _matches
             .value_of("public_url")
@@ -192,7 +204,8 @@ fn main() {
         let data_center = _matches.value_of("data_center").unwrap();
         let rack = _matches.value_of("rack").unwrap();
 
-        let server = VServer::new(
+        let mut server = VServer::new(
+            ip_bind,
             ip,
             port,
             &public_url,
@@ -206,6 +219,23 @@ fn main() {
             vec![],
             false,
         );
-        server.serve();
+        server.start();
+        handle_signal();
+        server.stop();
+    }
+}
+
+
+fn handle_signal() {
+    let trap = Trap::trap(&[SIGTERM, SIGINT, SIGHUP, SIGUSR1, SIGUSR2]);
+
+    for sig in trap {
+        match sig {
+            SIGTERM | SIGINT | SIGHUP => {
+                info!("receive signal {:?}, stopping server...", sig);
+                break;
+            }
+            _ => unreachable!(),
+        }
     }
 }
