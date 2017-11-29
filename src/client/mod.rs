@@ -10,6 +10,7 @@ use tokio_core::reactor::Core;
 use mime;
 use serde_json;
 
+// just for test
 pub struct Client {
     core: Core,
     master: String,

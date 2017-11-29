@@ -171,7 +171,7 @@ fn main() {
         let port: u16 = _matches
             .value_of("port")
             .map(|s| s.parse().unwrap())
-            .unwrap_or(9333);
+            .unwrap_or(8080);
 
         let public_url = _matches
             .value_of("public_url")

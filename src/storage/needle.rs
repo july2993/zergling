@@ -194,7 +194,7 @@ impl Needle {
         }
 
         if idx < len && self.has_pairs() {
-            self.pairs_size = Cursor::new(bytes[idx..idx + 1].to_vec())
+            self.pairs_size = Cursor::new(bytes[idx..idx + 2].to_vec())
                 .read_u16::<BigEndian>()
                 .unwrap();
             idx += 2;
@@ -215,6 +215,7 @@ impl Needle {
         self.data_size = self.data.len() as u32;
         self.name_size = self.name.len() as u8;
         self.mime_size = self.mime.len() as u8;
+        self.pairs_size = self.pairs.len() as u16;
 
         if self.data_size > 0 {
             self.size = 4 + self.data_size + 1; // one for flag;
@@ -231,7 +232,7 @@ impl Needle {
                 self.size += TTL_BYTES_LENGTH as u32;
             }
             if self.has_pairs() {
-                self.size += self.pairs_size as u32;
+                self.size += 2 + self.pairs.len() as u32;
             }
         } else {
             self.size = 0
@@ -269,9 +270,13 @@ impl Needle {
                 w.write_all(&self.ttl.bytes())?;
             }
 
-            // not supporst
             if self.has_pairs() {
-                panic!("not suppose");
+                bytes
+                    .write_u16::<BigEndian>(self.pairs.len() as u16)
+                    .unwrap();
+                w.write_all(&bytes)?;
+                bytes.clear();
+                w.write_all(&self.pairs)?;
             }
         }
 
@@ -366,6 +371,9 @@ impl Needle {
     }
     pub fn has_pairs(&self) -> bool {
         self.flags & FLAG_HAS_PAIRS > 0
+    }
+    pub fn set_has_pairs(&mut self) {
+        self.flags |= FLAG_HAS_PAIRS
     }
 
     pub fn has_last_modified_date(&self) -> bool {

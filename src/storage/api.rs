@@ -32,6 +32,7 @@ use serde_json;
 use util::{self, metrics_handler, read_req_body_full};
 use mime_guess;
 use operation::Looker;
+use storage::needle::PAIR_NAME_PREFIX;
 use metrics::*;
 
 const PHRASE: &'static str = "Hello, World!";
@@ -334,20 +335,21 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
     let mut file_name = String::new();
     let mut data: Vec<u8> = vec![];
     let mut mime_type = String::new();
-    let pair_map: HashMap<String, String> = HashMap::new();
+    let mut pair_map: HashMap<String, String> = HashMap::new();
 
     let modified_time: u64;
     let ttl: TTL;
     let is_chunked_file: bool;
-    //
-    //
-    // TODO parse custom pairs header
+
+    for hv in req.headers().iter() {
+        if hv.name().starts_with(PAIR_NAME_PREFIX) {
+            pair_map.insert(hv.name().to_owned(), hv.value_string());
+        }
+    }
 
     let boundary = get_boundary(&req)?;
     let body_data = read_req_body_full(req.body())?;
     debug!("body_data len: {}", body_data.len());
-    // debug!("body_data :\n {}", String::from_utf8(body_data.clone().to_vec()).unwrap());
-    // debug!("body_data :\n {:?}", &body_data);
     let mut mpart = multipart::server::Multipart::with_body(&body_data[..], boundary);
 
     // get first file with file_name
@@ -395,8 +397,6 @@ pub fn parse_upload(req: hyper::server::Request) -> Result<ParseUploadResp> {
             mime_type = post_mtype.clone(); // only return if not deductable, so my can save it only when can't deductable from file name
                                             // guess_mtype = post_mtype.clone();
         }
-
-
         // don't auto gzip and change filename like seaweed
     }
 
@@ -576,6 +576,11 @@ fn new_needle_from_request(req: Request) -> Result<Needle> {
     let mut n = Needle::default();
     n.data = resp.data;
 
+    if resp.pair_map.len() > 0 {
+        n.set_has_pairs();
+        n.pairs = serde_json::to_vec(&resp.pair_map)?;
+    }
+
     if resp.file_name.len() > 0 {
         n.name = resp.file_name.as_bytes().to_vec();
         n.set_name();
@@ -678,13 +683,12 @@ pub fn get_or_head_handler(ctx: &Context, req: &Request) -> Result<Response> {
     }
 
     if n.has_pairs() {
-        // TODO support pairs
-        // https://hyper.rs/hyper/0.8.0/hyper/header/index.html
-        // let j: serde_json::Value = serde_json::from_slice(&n.pairs)?;
-        // for (k, v) in j.as_object().unwrap() {
-        //     debug!("{} {}", k, v);
-        //     resp.headers_mut().set_raw(k, v.as_str().unwrap());
-        // }
+        let j: serde_json::Value = serde_json::from_slice(&n.pairs)?;
+        for (k, v) in j.as_object().unwrap() {
+            debug!("{} {}", k, v);
+            let s = v.as_str().unwrap();
+            resp.headers_mut().set_raw(k.clone(), s);
+        }
     }
 
     // chunk file
