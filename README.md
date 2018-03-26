@@ -1,6 +1,6 @@
 [![Status](https://travis-ci.org/july2993/zergling.svg?branch=master)](https://travis-ci.org/july2993/zergling)
 
-seaweedfs re-implemented in Rust.
+[seaweedFS](https://github.com/chrislusf/seaweedfs/) re-implemented in Rust.
 
 ## Why?
 
@@ -23,7 +23,7 @@ Rust nightly.  use 1.23.0-nightly (827cb0d61 2017-11-26) to develop now.
 
 ## Example Usage
 
-IMPORTANT: some important feature like compaction not implemented yet,  more test and optimization needed, so don't use it unless you just want to hack on it!
+**IMPORTANT: some important feature like compaction not implemented yet,  more test and optimization needed, so don't use it unless you just want to hack on it!**
 
 ### start master server
 
